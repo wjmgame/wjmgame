@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#8fd3f4">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="あそぼう">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="mobile-web-app-capable" content="yes">
+<title>あそぼう</title>
+<style>
+  :root {
+    --sky: #8fd3f4;
+    --ink: #23305a;
+    --coral: #ff7a6b;
+    --sun: #ffc83d;
+    --leaf: #4ccb8a;
+    --grape: #8e7cff;
+    --font: "Hiragino Maru Gothic ProN", "Zen Maru Gothic", "Yu Gothic", "Noto Sans JP", system-ui, sans-serif;
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body {
+    margin: 0; height: 100%; overflow: hidden; background: var(--sky);
+    font-family: var(--font); color: var(--ink);
+    touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
+    overscroll-behavior: none;
+  }
+  body {
+    display: flex; flex-direction: column;
+    padding: env(safe-area-inset-top, 0px) env(safe-area-inset-right, 0px) env(safe-area-inset-bottom, 0px) env(safe-area-inset-left, 0px);
+    background: radial-gradient(120% 70% at 50% 0%, #b9e9fb 0%, var(--sky) 60%);
+  }
+  h1 {
+    margin: 0; padding: 18px 16px 4px; text-align: center;
+    font-size: clamp(36px, 9vmin, 64px); font-weight: 800; letter-spacing: .12em;
+  }
+  main {
+    flex: 1; min-height: 0; padding: 12px 16px 20px;
+    display: grid; grid-template-columns: 1fr 1fr; grid-auto-rows: 1fr; gap: 16px;
+  }
+  @media (orientation: landscape) {
+    main { grid-template-columns: repeat(4, 1fr); }
+    h1 { padding-top: 8px; }
+  }
+  .tile {
+    position: relative; border: 0; padding: 0; cursor: pointer;
+    display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px;
+    background: var(--c); color: #fff; font: inherit;
+    box-shadow: 0 8px 0 rgba(35, 48, 90, .28);
+    transition: transform .12s, box-shadow .12s;
+  }
+  .tile:nth-child(1) { border-radius: 44% 56% 48% 52% / 52% 44% 56% 48%; }
+  .tile:nth-child(2) { border-radius: 52% 48% 56% 44% / 46% 54% 46% 54%; }
+  .tile:nth-child(3) { border-radius: 48% 52% 44% 56% / 56% 46% 54% 44%; }
+  .tile:nth-child(4) { border-radius: 56% 44% 52% 48% / 44% 56% 48% 52%; }
+  .tile:active { transform: translateY(6px); box-shadow: 0 2px 0 rgba(35, 48, 90, .28); }
+  .tile .icon { font-size: clamp(56px, 16vmin, 110px); line-height: 1; }
+  .tile .name { font-size: clamp(18px, 4.6vmin, 28px); font-weight: 800; letter-spacing: .08em; }
+  .tile.soon .name::after { content: "（もうすぐ）"; font-size: .6em; font-weight: 600; opacity: .9; }
+  .tile.bump { animation: bump .4s; }
+  @keyframes bump {
+    0% { transform: scale(1); } 30% { transform: scale(1.1) rotate(-3deg); }
+    60% { transform: scale(.96) rotate(2deg); } 100% { transform: scale(1); }
+  }
+  .bubble {
+    position: fixed; width: 64px; height: 64px; margin: -32px 0 0 -32px; border-radius: 50%;
+    pointer-events: none; z-index: 5;
+    background: radial-gradient(circle at 32% 30%, #fff 0 12%, rgba(255,255,255,.35) 40%, rgba(255,255,255,.15) 70%);
+    border: 3px solid rgba(255, 255, 255, .85);
+    animation: rise .9s ease-out forwards;
+  }
+  @keyframes rise {
+    0% { transform: translateY(0) scale(.4); opacity: 1; }
+    100% { transform: translateY(-120px) scale(1.3); opacity: 0; }
+  }
+  /* 保護者用: 右上を長押しで開く */
+  #gate {
+    position: fixed; top: env(safe-area-inset-top, 0px); right: env(safe-area-inset-right, 0px);
+    width: 56px; height: 56px; z-index: 10; background: transparent; border: 0; opacity: 0;
+  }
+  #panel {
+    position: fixed; inset: 0; z-index: 20; display: none; align-items: center; justify-content: center;
+    background: rgba(35, 48, 90, .55); padding: 24px;
+  }
+  #panel.open { display: flex; }
+  #panel .card {
+    background: #fff; border-radius: 24px; padding: 24px; width: min(360px, 100%);
+    display: flex; flex-direction: column; gap: 14px; touch-action: manipulation;
+  }
+  #panel h2 { margin: 0; font-size: 20px; }
+  #panel button {
+    font: inherit; font-size: 17px; font-weight: 700; padding: 14px; border-radius: 14px;
+    border: 2px solid var(--ink); background: #fff; color: var(--ink);
+  }
+  #panel button.primary { background: var(--ink); color: #fff; }
+  @media (prefers-reduced-motion: reduce) {
+    .bubble, .tile.bump { animation-duration: .01s; }
+  }
+</style>
+</head>
+<body>
+  <h1>あそぼう</h1>
+  <main id="grid"></main>
+  <button id="gate" aria-label="保護者メニュー（長押し）"></button>
+
+  <div id="panel" role="dialog" aria-label="保護者メニュー">
+    <div class="card">
+      <h2>保護者メニュー</h2>
+      <button id="muteBtn"></button>
+      <button id="closeBtn" class="primary">閉じる</button>
+    </div>
+  </div>
+
+<script>
+// ゲーム一覧。href を設定すると、タップでそのページへ移動する
+const GAMES = [
+  { id: "animals", name: "どうぶつ", icon: "🐶", color: "var(--coral)", href: null },
+  { id: "colors",  name: "いろ",     icon: "🎨", color: "var(--sun)",   href: null },
+  { id: "balloon", name: "ふうせん", icon: "🎈", color: "var(--leaf)",  href: null },
+  { id: "vehicles",name: "のりもの", icon: "🚗", color: "var(--grape)", href: null },
+];
+
+// --- 設定の保存（ストレージが使えない環境でも動く）---
+const store = {
+  get(k, d) { try { const v = localStorage.getItem(k); return v === null ? d : JSON.parse(v); } catch (e) { return d; } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} },
+};
+let muted = store.get("muted", false);
+
+// --- 音（最初のタップ後に初期化。iOSの制約対応）---
+let ac = null;
+const SCALE = [523.25, 587.33, 659.25, 783.99, 880.0, 1046.5]; // ペンタトニックで何を鳴らしても心地よい
+function pop(i) {
+  if (muted) return;
+  try {
+    ac = ac || new (window.AudioContext || window.webkitAudioContext)();
+    if (ac.state === "suspended") ac.resume();
+    const t = ac.currentTime, o = ac.createOscillator(), g = ac.createGain();
+    o.type = "sine";
+    o.frequency.setValueAtTime(SCALE[i % SCALE.length], t);
+    o.frequency.exponentialRampToValueAtTime(SCALE[i % SCALE.length] * 1.5, t + .12);
+    g.gain.setValueAtTime(.0001, t);
+    g.gain.exponentialRampToValueAtTime(.25, t + .02);
+    g.gain.exponentialRampToValueAtTime(.0001, t + .3);
+    o.connect(g).connect(ac.destination);
+    o.start(t); o.stop(t + .32);
+  } catch (e) {}
+}
+
+// --- タイル ---
+const grid = document.getElementById("grid");
+GAMES.forEach((g, i) => {
+  const b = document.createElement("button");
+  b.className = "tile" + (g.href ? "" : " soon");
+  b.style.setProperty("--c", g.color);
+  b.innerHTML = `<span class="icon">${g.icon}</span><span class="name">${g.name}</span>`;
+  b.addEventListener("click", () => {
+    pop(i + 2);
+    b.classList.remove("bump"); void b.offsetWidth; b.classList.add("bump");
+    if (g.href) setTimeout(() => { location.href = g.href; }, 250);
+  });
+  grid.appendChild(b);
+});
+
+// --- どこをタッチしてもシャボン玉と音（マルチタッチ対応）---
+document.addEventListener("pointerdown", (e) => {
+  if (e.target.closest("#panel")) return;
+  const el = document.createElement("div");
+  el.className = "bubble";
+  el.style.left = e.clientX + "px";
+  el.style.top = e.clientY + "px";
+  el.addEventListener("animationend", () => el.remove());
+  document.body.appendChild(el);
+  pop(Math.floor(Math.random() * SCALE.length));
+});
+
+// --- 保護者メニュー（右上を1.5秒長押し）---
+const panel = document.getElementById("panel");
+const muteBtn = document.getElementById("muteBtn");
+const renderMute = () => { muteBtn.textContent = muted ? "音を出す" : "音を消す"; };
+renderMute();
+let holdTimer = null;
+const gate = document.getElementById("gate");
+gate.addEventListener("pointerdown", (e) => {
+  e.stopPropagation();
+  holdTimer = setTimeout(() => panel.classList.add("open"), 1500);
+});
+["pointerup", "pointerleave", "pointercancel"].forEach((ev) =>
+  gate.addEventListener(ev, () => clearTimeout(holdTimer)));
+muteBtn.addEventListener("click", () => { muted = !muted; store.set("muted", muted); renderMute(); });
+document.getElementById("closeBtn").addEventListener("click", () => panel.classList.remove("open"));
+
+// オフライン対応（HTTPS配信時のみ有効）
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(() => {}));
+}
+
+// 長押しメニュー・ダブルタップ拡大を抑止
+document.addEventListener("contextmenu", (e) => e.preventDefault());
+document.addEventListener("gesturestart", (e) => e.preventDefault());
+</script>
+</body>
+</html>
