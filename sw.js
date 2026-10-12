@@ -1,7 +1,7 @@
 // キャッシュ方針: キャッシュがあれば即表示し、裏で最新版を取得して次回に反映する
 // 大きな変更を配信したら CACHE の版数を上げると、古いキャッシュが破棄される
-const CACHE = "asobo-v1";
-const PRECACHE = ["./", "index.html", "manifest.webmanifest", "icon-192.png", "icon-512.png", "apple-touch-icon.png"];
+const CACHE = "asobo-v2";
+const PRECACHE = ["./", "index.html", "manifest.webmanifest", "icon-192.png", "icon-512.png", "apple-touch-icon.png", "games/balloon.html"];
 
 self.addEventListener("install", (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(PRECACHE)).then(() => self.skipWaiting()));
