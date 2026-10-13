@@ -39,9 +39,18 @@ jobs:
           json.dump({"games": games}, open("games.json", "w", encoding="utf-8"), ensure_ascii=False, indent=1)
           print(json.dumps(games, ensure_ascii=False))
           PY
+      - name: 公開するファイルの一覧(確認用)
+        run: find . -path ./.git -prune -o -type f -print | sort
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
           path: .
       - id: deployment
         uses: actions/deploy-pages@v4
+      - name: 公開結果の確認(確認用)
+        run: |
+          sleep 20
+          for f in index.html common.js games.json games/balloon.html games/nurie.html; do
+            code=$(curl -s -o /dev/null -w "%{http_code}" "${{ steps.deployment.outputs.page_url }}$f?t=$(date +%s)")
+            echo "$f -> $code"
+          done
