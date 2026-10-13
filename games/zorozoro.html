@@ -56,7 +56,7 @@ const snd = (f, ...a) => { try { if (typeof A[f] === 'function') return A[f](...
    例: const FACES = ['../faces/a.jpg', '../faces/b.jpg'];
    先頭の列(リーダー)は FACES[0]、仲間は順番に割り当て
 ------------------------------------------------------------------ */
-const FACES = [];
+const FACES = ['../faces/IMG_5626.jpeg'];
 const faceImgs = FACES.map(src => {
   const im = new Image();
   im.onload = () => { im.ok = true; };
