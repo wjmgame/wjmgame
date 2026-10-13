@@ -1,0 +1,47 @@
+name: Deploy
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+concurrency:
+  group: pages
+  cancel-in-progress: true
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: games/*.html から games.json を生成
+        run: |
+          python3 - <<'PY'
+          import re, json, glob, os
+          games = []
+          for p in glob.glob("games/*.html"):
+              s = open(p, encoding="utf-8").read()
+              def meta(n, d):
+                  m = re.search(r'<meta\s+name="game-' + n + r'"\s+content="([^"]*)"', s)
+                  return m.group(1) if m else d
+              gid = os.path.splitext(os.path.basename(p))[0]
+              try:
+                  order = int(meta("order", "100"))
+              except ValueError:
+                  order = 100
+              games.append({"id": gid, "title": meta("title", gid), "icon": meta("icon", "🎮"),
+                            "color": meta("color", "#8e7cff"), "order": order, "href": p})
+          games.sort(key=lambda g: (g["order"], g["id"]))
+          json.dump({"games": games}, open("games.json", "w", encoding="utf-8"), ensure_ascii=False, indent=1)
+          print(json.dumps(games, ensure_ascii=False))
+          PY
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: .
+      - id: deployment
+        uses: actions/deploy-pages@v4

@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>ぬりえ</title>
+<meta name="game-title" content="ぬりえ">
+<meta name="game-icon" content="🎨">
+<meta name="game-color" content="#ffc83d">
+<meta name="game-order" content="20">
+<script src="../common.js"></script>
+<style>
+:root{--sky:#8fd3f4;--ink:#23305a;--btn:#ffd23f}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+html,body{height:100%;margin:0;overflow:hidden;background:var(--sky);color:var(--ink);font-family:"Hiragino Maru Gothic ProN","Hiragino Sans",sans-serif;touch-action:none;overscroll-behavior:none}
+body{display:flex;flex-direction:column;padding:env(safe-area-inset-top) calc(12px + env(safe-area-inset-right)) env(safe-area-inset-bottom) calc(12px + env(safe-area-inset-left))}
+main{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;padding-top:12px}
+#art{height:100%;width:100%;max-width:640px;background:#fff;border-radius:24px;border:4px solid var(--ink)}
+.r{stroke:var(--ink);stroke-width:4;stroke-linejoin:round;stroke-linecap:round}
+#pal{display:flex;flex-wrap:wrap;justify-content:center;gap:10px;padding:12px 0 6px}
+.c{width:52px;height:52px;border-radius:50%;border:4px solid #fff;box-shadow:0 0 0 3px #23305a55;padding:0;transition:transform .12s}
+.c.on{box-shadow:0 0 0 5px var(--ink);transform:scale(1.15)}
+.c.er{display:flex;align-items:center;justify-content:center;font-size:24px;font-weight:700;background:#fff;color:var(--ink)}
+footer{display:flex;justify-content:space-between;gap:12px;padding:6px 0 12px}
+.btn{flex:1;height:56px;border:0;border-radius:28px;background:var(--btn);color:var(--ink);font-size:24px;font-weight:700;box-shadow:0 4px 0 #d9ae2f}
+.btn:active{transform:translateY(3px);box-shadow:0 1px 0 #d9ae2f}
+.spark{position:fixed;width:28px;height:28px;margin:-14px 0 0 -14px;border-radius:50%;pointer-events:none;z-index:5;animation:sp .5s ease-out forwards}
+@keyframes sp{from{transform:scale(.4);opacity:.9}to{transform:scale(2.2);opacity:0}}
+@media (prefers-reduced-motion:reduce){.spark{animation-duration:.01s}}
+</style>
+</head>
+<body>
+<main><svg id="art" viewBox="0 0 300 300" role="img" aria-label="ぬりえ"></svg></main>
+<div id="pal"></div>
+<footer>
+  <button class="btn" id="prev" aria-label="まえ">◀</button>
+  <button class="btn" id="reset" aria-label="やりなおし">↺</button>
+  <button class="btn" id="next" aria-label="つぎ">▶</button>
+</footer>
+<script>
+const R=(t,a)=>`<${t} class="r" fill="#fff" ${a}/>`;
+const bg=()=>R('rect','x="0" y="0" width="300" height="300" stroke-width="0"');
+const PICS=[
+ [bg(),
+  R('rect','x="0" y="215" width="300" height="85" stroke-width="0"'),
+  R('path','d="M95 150 L120 100 H190 L220 150 Z"'),
+  R('rect','x="40" y="150" width="220" height="60" rx="14"'),
+  R('path','d="M108 145 L127 108 H150 V145 Z"'),
+  R('path','d="M160 145 V108 H185 L207 145 Z"'),
+  R('circle','cx="95" cy="215" r="28"'),R('circle','cx="205" cy="215" r="28"'),
+  R('circle','cx="248" cy="40" r="26"')],
+ [bg(),
+  R('path','d="M150 90 C100 60 40 100 55 180 C65 240 110 270 150 255 C190 270 235 240 245 180 C260 100 200 60 150 90 Z"'),
+  R('path','d="M150 90 C150 65 155 50 170 40 L180 50 C168 58 165 72 165 92 Z"'),
+  R('path','d="M172 55 C200 25 240 30 250 50 C225 70 195 70 172 55 Z"')],
+ [bg(),
+  R('path','d="M215 150 L275 100 L275 200 Z"'),
+  R('ellipse','cx="140" cy="150" rx="95" ry="65"'),
+  R('path','d="M120 95 C140 60 175 60 185 95 Z"'),
+  R('path','d="M115 205 C135 240 170 240 180 205 Z"'),
+  R('circle','cx="80" cy="135" r="16"'),
+  R('circle','cx="200" cy="165" r="14"')],
+ [bg(),
+  R('ellipse','cx="150" cy="235" rx="75" ry="55"'),
+  R('path','d="M75 110 L80 40 L130 80 Z"'),
+  R('path','d="M225 110 L220 40 L170 80 Z"'),
+  R('circle','cx="150" cy="130" r="80"'),
+  R('circle','cx="120" cy="120" r="14"'),R('circle','cx="180" cy="120" r="14"'),
+  R('path','d="M135 150 H165 L150 168 Z"')],
+ [bg(),
+  R('path','d="M95 160 L205 160 L150 280 Z"'),
+  R('circle','cx="150" cy="120" r="55"'),
+  R('path','d="M85 155 C85 135 215 135 215 155 C215 170 85 170 85 155 Z"'),
+  R('circle','cx="150" cy="52" r="20"')]
+];
+const COLORS=['#ff6b5e','#ff9f43','#ffd23f','#5fc76b','#4aa8ff','#9b6bd6','#ff8ad8','#a0693c','#23305a'];
+const NOTES=[262,294,330,392,440,523,587,659,784]; // ドレミソラ…(音階)
+let cur=0, idx=0;
+const art=document.getElementById('art'), pal=document.getElementById('pal');
+
+/* 音: common.js(ミュート設定も自動で反映)。音階なので音程は変えない(glide=1) */
+const beep=(freq,dur)=>Asobo.tone(freq,dur,.25,1);
+
+function show(i){
+  idx=(i+PICS.length)%PICS.length;
+  art.innerHTML=PICS[idx].join('');
+}
+function sel(btn,k){
+  cur=k;
+  pal.querySelectorAll('.c').forEach(b=>b.classList.remove('on'));
+  btn.classList.add('on');
+}
+COLORS.forEach((col,k)=>{
+  const b=document.createElement('button');
+  b.className='c'+(k===0?' on':'');b.style.background=col;
+  b.setAttribute('aria-label','いろ'+(k+1));
+  b.addEventListener('pointerdown',()=>{sel(b,k);beep(NOTES[k],.2);});
+  pal.appendChild(b);
+});
+const er=document.createElement('button');
+er.className='c er';er.textContent='✕';er.setAttribute('aria-label','けしごむ');
+er.addEventListener('pointerdown',()=>{sel(er,-1);beep(200,.15);});
+pal.appendChild(er);
+
+/* どこをタップしても反応(キラッと光る+音)。複数指OK */
+document.addEventListener('pointerdown',e=>{
+  const s=document.createElement('div');
+  s.className='spark';
+  s.style.left=e.clientX+'px';s.style.top=e.clientY+'px';
+  s.style.background=cur>=0?COLORS[cur]:'#fff';
+  document.body.appendChild(s);
+  setTimeout(()=>s.remove(),600);
+});
+art.addEventListener('pointerdown',e=>{
+  const t=e.target.closest('.r');
+  if(!t)return;
+  t.setAttribute('fill',cur>=0?COLORS[cur]:'#fff');
+  beep(cur>=0?NOTES[cur]:200,.25);
+});
+document.getElementById('prev').addEventListener('pointerdown',()=>{show(idx-1);beep(330,.15);});
+document.getElementById('next').addEventListener('pointerdown',()=>{show(idx+1);beep(392,.15);});
+document.getElementById('reset').addEventListener('pointerdown',()=>{show(idx);beep(262,.2);});
+
+show(0);
+</script>
+</body>
+</html>
