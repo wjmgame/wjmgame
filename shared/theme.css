@@ -1,0 +1,10 @@
+/* 共通の配色・フォント。使う側: <link rel="stylesheet" href="../../shared/theme.css">(トップは shared/theme.css) */
+:root {
+  --sky: #8fd3f4;
+  --ink: #23305a;
+  --coral: #ff7a6b;
+  --sun: #ffc83d;
+  --leaf: #4ccb8a;
+  --grape: #8e7cff;
+  --font: "Hiragino Maru Gothic ProN", "Zen Maru Gothic", "Yu Gothic", "Noto Sans JP", system-ui, sans-serif;
+}

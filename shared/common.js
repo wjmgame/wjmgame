@@ -1,9 +1,14 @@
-// 全ゲーム共通。ゲームHTMLの <head> に <script src="../common.js"></script> を入れるだけで有効になる
-//  - 保護者ゲート: 右上を1.5秒長押しでトップ("../")へ戻る
+// 全ゲーム共通。ゲームHTMLの <head> に <script src="../../shared/common.js"></script> を入れるだけで有効になる
+//  - 保護者ゲート: 右上を1.5秒長押しでトップへ戻る
+//  - パス解決: このファイルの場所からサイトのルートを割り出す。Asobo.url("assets/...") / Asobo.home() を使い、相対パスを直書きしない
 //  - ズーム・長押しメニューの抑止
 //  - 音: ミュート設定(localStorage "muted")を自動で反映。音は Asobo.tone / pop / blip を使う
 (() => {
   const KEY = "muted";
+  const SRC = (document.currentScript && document.currentScript.src) || "";
+  const ROOT = SRC ? new URL("../", SRC).href : new URL("./", location.href).href; // shared/ の1つ上がルート
+  const url = (path) => new URL(path, ROOT).href;
+  const home = () => { location.href = ROOT; };
   const SCALE = [523.25, 587.33, 659.25, 783.99, 880.0, 1046.5];
   let ac = null, noiseBuf = null;
   const muted = () => { try { return JSON.parse(localStorage.getItem(KEY)) === true; } catch (e) { return false; } };
@@ -42,7 +47,7 @@
   }
   const blip = (i = Math.floor(Math.random() * SCALE.length)) => tone(SCALE[i % SCALE.length], .25, .15);
   const pop = () => { noise(); blip(); };
-  window.Asobo = { SCALE, muted, setMuted, ctx, tone, noise, blip, pop };
+  window.Asobo = { root: ROOT, url, home, SCALE, muted, setMuted, ctx, tone, noise, blip, pop };
 
   addEventListener("pointerdown", ctx, true); // iOSは最初のタップ後でないと音が出ない
   document.addEventListener("contextmenu", (e) => e.preventDefault());
@@ -60,7 +65,7 @@
     b.addEventListener("pointerdown", (e) => {
       e.stopPropagation();
       ring.style.transition = "transform 1.5s linear, opacity .2s"; ring.style.opacity = ".6"; ring.style.transform = "scale(1)";
-      hold = setTimeout(() => { location.href = "../"; }, 1500);
+      hold = setTimeout(() => { home(); }, 1500);
     });
     ["pointerup", "pointerleave", "pointercancel"].forEach((ev) => b.addEventListener(ev, end));
     document.body.appendChild(ring);
