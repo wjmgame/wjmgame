@@ -47,7 +47,8 @@
 <body>
 <div id="top"></div>
 <div id="board"></div>
-<script src="../common.js"></script>
+<script src="../../shared/common.js"></script>
+<script src="../../shared/faces.js"></script>
 <script>
 (function(){
   var START_PAIRS = 2;   // 最初のペア数
@@ -71,35 +72,11 @@
     return a;
   }
 
-  // faces/list.json の読み込み(文字列配列/オブジェクト配列どちらでも対応)
   var FACE_MAX = 12;
-  // 連番フォールバック: 1.jpg, 2.jpg… を順に確認
-  function probeSequential(){
-    return new Promise(function(resolve){
-      var found = [];
-      (function next(i){
-        if(i > FACE_MAX){ resolve(found); return; }
-        var im = new Image();
-        im.onload = function(){ found.push('../faces/' + i + '.jpg'); next(i+1); };
-        im.onerror = function(){ resolve(found); };
-        im.src = '../faces/' + i + '.jpg';
-      })(1);
-    });
-  }
-
-  // faces/list.json = ファイル名だけの文字列配列。?t=時刻でsw.jsのキャッシュを回避
+  // 顔写真の一覧は shared/faces.js(Asobo.faces.urls)で取得する
   function loadFaces(){
-    return fetch('../faces/list.json?t=' + Date.now(),{cache:'no-store'}).then(function(r){
-      if(!r.ok) throw new Error('no list');
-      return r.json();
-    }).then(function(arr){
-      if(!Array.isArray(arr) || !arr.length) throw new Error('empty');
-      faces = arr.slice(0, FACE_MAX).map(function(n){
-        return '../faces/' + encodeURIComponent(n);
-      });
-    }).catch(function(){
-      return probeSequential().then(function(found){ faces = found; });
-    });
+    if(!(window.Asobo && Asobo.faces)){ faces = []; return Promise.resolve(); }
+    return Asobo.faces.urls(FACE_MAX).then(function(u){ faces = u; });
   }
 
   function maxPairsNow(){
@@ -241,7 +218,7 @@
     if(pairs >= maxPairsNow()){
       finished = true;
       setTimeout(showClear, 900);
-      setTimeout(function(){ location.href = '../'; }, 4500);
+      setTimeout(function(){ if(window.Asobo && Asobo.home){ Asobo.home(); } else { location.href = '../../'; } }, 4500);
       return;
     }
     setTimeout(function(){

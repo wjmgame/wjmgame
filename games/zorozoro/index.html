@@ -42,7 +42,8 @@
     <button id="panel-close">とじる</button>
   </div>
 </div>
-<script src="../common.js"></script>
+<script src="../../shared/common.js"></script>
+<script src="../../shared/faces.js"></script>
 <script>
 (() => {
 'use strict';
@@ -51,54 +52,13 @@ const A = window.Asobo || {};
 const snd = (f, ...a) => { try { if (typeof A[f] === 'function') return A[f](...a); } catch (e) {} };
 
 /* ------------------------------------------------------------------
-   顔写真の自動読み込み
-   faces フォルダに画像を置くと、デプロイ時に faces/list.json が自動で作られ、
-   その順番(ファイル名の降順)で読み込む。1枚目がはじめのリーダー、残りが仲間に順番に入る
-   list.json が無いとき(ローカル確認など)は 1.jpg, 2.jpg ... の連番を探す
-   写真は読み込み後に小さく切り抜くので、大きいままでも動くが、
-   読み込みを軽くするには 300px 四方くらいに縮小して置くのがおすすめ
-   ゲームは読み込みを待たずに始まり、写真は届いたものから反映される
+   顔写真の自動読み込み(共通: shared/faces.js)
+   assets/faces/ に画像を置くと、デプロイ時に list.json が自動で作られ、その順番(ファイル名の降順)で読み込む
+   1枚目がはじめのリーダー、残りが仲間に順番に入る。ゲームは読み込みを待たずに始まり、写真は届いたものから反映される
 ------------------------------------------------------------------ */
-const FACE_DIR = '../faces/', FACE_MAX = 12, FACE_EXTS = ['jpg', 'jpeg', 'png', 'webp'];
+const FACE_MAX = 12;
 const faceImgs = [];
-const loadImg = src => new Promise(res => {
-  const im = new Image();
-  im.onload = () => res(im);
-  im.onerror = () => res(null);
-  im.src = src;
-});
-function addFace(im) {
-  const c = document.createElement('canvas');
-  c.width = c.height = 160;
-  const k = Math.max(160 / im.naturalWidth, 160 / im.naturalHeight);
-  const w = im.naturalWidth * k, h = im.naturalHeight * k;
-  c.getContext('2d').drawImage(im, (160 - w) / 2, (160 - h) / 2, w, h);
-  c.ok = true;
-  faceImgs.push(c);
-}
-(async () => {
-  let names = null;
-  try {
-    const res = await fetch(FACE_DIR + 'list.json?t=' + Date.now(), { cache: 'no-store' });
-    if (res.ok) names = await res.json();
-  } catch (e) {}
-  if (Array.isArray(names)) {
-    for (const name of names.slice(0, FACE_MAX)) {
-      const im = await loadImg(FACE_DIR + encodeURIComponent(name));
-      if (im) addFace(im);
-    }
-    return;
-  }
-  for (let n = 1; n <= FACE_MAX; n++) { // 予備: 連番
-    let im = null;
-    for (const ext of FACE_EXTS) {
-      im = await loadImg(FACE_DIR + n + '.' + ext);
-      if (im) break;
-    }
-    if (!im) break;
-    addFace(im);
-  }
-})();
+if (A.faces) A.faces.canvases({ max: FACE_MAX, size: 160, onEach: (c) => { c.ok = true; faceImgs.push(c); } });
 
 const COLORS = ['#ff7a6b', '#4ccb8a', '#8e7cff', '#ff9ad5', '#5cc8ff', '#ffa24d'];
 const LEADER_COLOR = '#ffc83d';
