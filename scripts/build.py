@@ -2,8 +2,9 @@
 """公開用サイト(_site/)を作る(deploy.yml から呼ばれる。手元でも `python3 scripts/build.py` で試せる)
 
  - ソースを _site/ へコピーする(scripts/・docs/・README・.git など、公開不要なものは除く)
- - assets/<種類>/ の画像(icons を除く)は、長辺 480px の WebP に縮小して公開する。元画像は公開しない。音声はそのままコピー
-   出力名は <元の名前>.<8桁ハッシュ>.webp。写真を差し替えると名前が変わるので、キャッシュの版数を上げなくてよい
+ - assets/<種類>/ の画像は、フォルダごとの方針(FOLDER_POLICY)で縮小して公開する。元画像は公開しない。音声はそのままコピー
+     webp: 長辺 480px の WebP に変換する(例: faces)。出力名は <元の名前>.<8桁ハッシュ>.webp で、list.json を作る
+     keep: 名前と形式を保ったまま、大きければ縮小・再圧縮する(例: icons)。ゲームやmanifestから固定の名前で参照できる
  - games.json と assets/<種類>/list.json を生成する(list は元のファイル名の降順(自然順)。1枚目がはじめのリーダー)
  - sw.js の BUILD(公開物全体のハッシュ)を書き換え、先読み対象の一覧 precache.json を生成する(内容が同じなら同じ BUILD)
 Pillow が無い環境では、画像を縮小せずそのままコピーする(警告を出す)
@@ -16,7 +17,13 @@ OUT = "_site"
 EXCLUDE_ROOT = {".git", ".github", ".gitignore", OUT, "scripts", "docs", "README.md", "assets"}
 IMG_EXTS = {".jpg", ".jpeg", ".png", ".webp", ".gif", ".avif"}
 AUDIO_EXTS = {".mp3", ".wav", ".ogg", ".m4a"}
-MAX_EDGE, QUALITY = 480, 80
+QUALITY = 80
+# フォルダごとの縮小方針。ここに無いフォルダは DEFAULT_POLICY(WebP に変換して list.json を作る)
+FOLDER_POLICY = {
+    "icons": {"mode": "keep", "max_edge": 512},  # 長辺が 512px 超なら縮小。100KB 超なら再圧縮。小さければ元のまま
+}
+DEFAULT_POLICY = {"mode": "webp", "max_edge": 480}
+KEEP_REENCODE_BYTES = 100 * 1024
 PRECACHE_MAX = 1024 * 1024  # これより大きいファイルは先読みせず、使うときに取得する
 
 
@@ -34,20 +41,57 @@ def kb(n):
     return f"{n / 1024:.0f}KB"
 
 
+def keep_image(Image, ImageOps, src, dst, max_edge):
+    """名前と形式を保ったまま縮小する。小さければ元のバイト列のままコピーする。(変更前, 変更後)のサイズを返す"""
+    ext, before = os.path.splitext(src)[1].lower(), os.path.getsize(src)
+    if Image is None or ext not in (".png", ".jpg", ".jpeg", ".webp"):
+        shutil.copy2(src, dst)
+        return before, before
+    with Image.open(src) as im:
+        longest = max(im.size)
+        if longest <= max_edge and before <= KEEP_REENCODE_BYTES:
+            shutil.copy2(src, dst)
+            return before, before
+        im = ImageOps.exif_transpose(im)
+        if im.mode in ("P", "LA", "PA"):
+            im = im.convert("RGBA")
+        elif im.mode not in ("RGB", "RGBA", "L"):
+            im = im.convert("RGB")
+        im.thumbnail((max_edge, max_edge), Image.LANCZOS)  # 拡大はしない
+        if ext == ".png":
+            im.save(dst, "PNG", optimize=True)
+        elif ext == ".webp":
+            im.save(dst, "WEBP", quality=90, method=6)
+        else:
+            im.convert("RGB").save(dst, "JPEG", quality=85, optimize=True, progressive=True)
+    after = os.path.getsize(dst)
+    if after >= before and longest <= max_edge:  # 縮小できず、かえって大きくなるなら元のまま
+        shutil.copy2(src, dst)
+        after = before
+    return before, after
+
+
 def build_assets():
     try:
         from PIL import Image, ImageOps
     except ImportError:
-        Image = None
+        Image = ImageOps = None
         print("warning: Pillow が無いため、画像は縮小せずそのままコピーします")
-    if os.path.isdir("assets/icons"):
-        shutil.copytree("assets/icons", f"{OUT}/assets/icons")
     for d in sorted(glob.glob("assets/*/")):
         name = os.path.basename(os.path.normpath(d))
-        if name == "icons":
-            continue
+        policy = FOLDER_POLICY.get(name, DEFAULT_POLICY)
+        max_edge = policy["max_edge"]
         out_dir = f"{OUT}/assets/{name}"
         os.makedirs(out_dir, exist_ok=True)
+        if policy["mode"] == "keep":
+            for f in sorted(os.listdir(d)):
+                src = os.path.join(d, f)
+                if not os.path.isfile(src):
+                    continue
+                before, after = keep_image(Image, ImageOps, src, os.path.join(out_dir, f), max_edge)
+                if after != before:
+                    print(f"  {name}/{f} ({kb(before)}) -> {kb(after)}")
+            continue
         files = [f for f in os.listdir(d) if os.path.splitext(f)[1].lower() in IMG_EXTS | AUDIO_EXTS]
         files.sort(key=natural_key, reverse=True)
         entries = []
@@ -55,7 +99,7 @@ def build_assets():
             src, ext = os.path.join(d, f), os.path.splitext(f)[1].lower()
             if ext in IMG_EXTS and Image:
                 raw = open(src, "rb").read()
-                h = hashlib.sha1(raw + f"{MAX_EDGE}-{QUALITY}".encode()).hexdigest()[:8]
+                h = hashlib.sha1(raw + f"{max_edge}-{QUALITY}".encode()).hexdigest()[:8]
                 out_name = f"{os.path.splitext(f)[0]}.{h}.webp"
                 with Image.open(src) as im:
                     im = ImageOps.exif_transpose(im)  # iPhone写真の向きを反映
@@ -63,7 +107,7 @@ def build_assets():
                         im = im.convert("RGBA")
                     elif im.mode not in ("RGB", "RGBA"):
                         im = im.convert("RGB")
-                    im.thumbnail((MAX_EDGE, MAX_EDGE), Image.LANCZOS)  # 拡大はしない
+                    im.thumbnail((max_edge, max_edge), Image.LANCZOS)  # 拡大はしない
                     im.save(os.path.join(out_dir, out_name), "WEBP", quality=QUALITY, method=6)
                 print(f"  {name}/{f} ({kb(len(raw))}) -> {out_name} ({kb(os.path.getsize(os.path.join(out_dir, out_name)))})")
             else:
