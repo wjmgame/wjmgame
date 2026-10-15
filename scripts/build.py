@@ -6,7 +6,6 @@
    出力名は <元の名前>.<8桁ハッシュ>.webp。写真を差し替えると名前が変わるので、キャッシュの版数を上げなくてよい
  - games.json と assets/<種類>/list.json を生成する(list は元のファイル名の降順(自然順)。1枚目がはじめのリーダー)
  - sw.js の BUILD(公開物全体のハッシュ)を書き換え、先読み対象の一覧 precache.json を生成する(内容が同じなら同じ BUILD)
- - 300KB を超えるファイルがあれば警告する
 Pillow が無い環境では、画像を縮小せずそのままコピーする(警告を出す)
 """
 import glob, hashlib, json, os, re, shutil, sys
@@ -18,7 +17,6 @@ EXCLUDE_ROOT = {".git", ".github", ".gitignore", OUT, "scripts", "docs", "README
 IMG_EXTS = {".jpg", ".jpeg", ".png", ".webp", ".gif", ".avif"}
 AUDIO_EXTS = {".mp3", ".wav", ".ogg", ".m4a"}
 MAX_EDGE, QUALITY = 480, 80
-WARN_BYTES = 300 * 1024
 PRECACHE_MAX = 1024 * 1024  # これより大きいファイルは先読みせず、使うときに取得する
 
 
@@ -129,14 +127,7 @@ def stamp_build():
 
 
 def report():
-    total = 0
-    for base, _, fs in os.walk(OUT):
-        for f in fs:
-            p = os.path.join(base, f)
-            n = os.path.getsize(p)
-            total += n
-            if n > WARN_BYTES:
-                print(f"warning: {os.path.relpath(p, OUT)} が {kb(n)} あります(300KB超。ゲーム専用の画像は小さくしてください)")
+    total = sum(os.path.getsize(os.path.join(b, f)) for b, _, fs in os.walk(OUT) for f in fs)
     print(f"公開サイズ合計: {kb(total)}")
 
 
