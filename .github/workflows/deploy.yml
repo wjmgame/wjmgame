@@ -3,6 +3,8 @@ name: Deploy
 on:
   push:
     branches: [main]
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -11,15 +13,12 @@ permissions:
   id-token: write
 
 concurrency:
-  group: pages
+  group: deploy-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  deploy:
+  build:
     runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
 
@@ -29,26 +28,64 @@ jobs:
 
       - run: python3 -m pip install --quiet pillow
 
-      - name: 公開用サイト(_site)を生成(画像の縮小・games.json・list.json)
+      - name: 公開用サイト(_site)を生成(画像の縮小・games.json・list.json・版数)
         run: python3 scripts/build.py
+
+      - name: 公開前チェック(エラーがあれば公開しない)
+        run: python3 scripts/check.py
+
+      - name: ブラウザテストの設定を読む(scripts/checks.json)
+        id: cfg
+        env:
+          MSG: ${{ github.event.head_commit.message }}
+        run: |
+          mode=$(jq -r '.browser_test // "off"' scripts/checks.json)
+          case "$MSG" in *"[skip-browser]"*) mode=off ;; esac
+          echo "mode=$mode" >> "$GITHUB_OUTPUT"
+          echo "ブラウザテスト: $mode"
+
+      - name: ブラウザテストの準備
+        if: steps.cfg.outputs.mode != 'off'
+        run: python3 -m pip install --quiet playwright
+
+      - name: ブラウザでの実行テスト
+        id: browser
+        if: steps.cfg.outputs.mode != 'off'
+        continue-on-error: ${{ steps.cfg.outputs.mode == 'warn' }}
+        run: python3 scripts/browser_test.py
+
+      - name: ブラウザテスト失敗の通知(警告モードのため公開は続行)
+        if: steps.browser.outcome == 'failure'
+        run: echo "::warning::ブラウザテストが失敗しました。scripts/checks.json が warn のため、公開は続行します"
 
       - name: 公開するファイルの一覧(確認用)
         run: find _site -type f -printf '%s\t%p\n' | sort -k2
 
-      - uses: actions/configure-pages@v5
-
       - uses: actions/upload-pages-artifact@v3
+        if: github.event_name != 'pull_request'
         with:
           path: _site
+
+  deploy:
+    needs: build
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/configure-pages@v5
 
       - id: deployment
         uses: actions/deploy-pages@v4
 
       - name: 公開結果の確認(確認用)
         run: |
+          base="${{ steps.deployment.outputs.page_url }}"
           sleep 20
-          cd _site
-          for f in index.html shared/common.js shared/faces.js sw.js precache.json games.json $(jq -r '.games[].href' games.json) $(ls assets/*/list.json 2>/dev/null) $(jq -r '(.[0] // empty) | "assets/faces/" + .' assets/faces/list.json 2>/dev/null); do
-            code=$(curl -s -o /dev/null -w "%{http_code}" "${{ steps.deployment.outputs.page_url }}$f?t=$(date +%s)")
+          curl -s "${base}games.json?t=$(date +%s)" > games.json
+          curl -s "${base}assets/faces/list.json?t=$(date +%s)" > faces.json || echo "[]" > faces.json
+          for f in index.html shared/common.js shared/faces.js sw.js precache.json games.json assets/faces/list.json $(jq -r '.games[].href' games.json) $(jq -r '.[] | "assets/faces/" + (. | @uri)' faces.json 2>/dev/null); do
+            code=$(curl -s -o /dev/null -w "%{http_code}" "${base}$f?t=$(date +%s)")
             echo "$f -> $code"
           done
