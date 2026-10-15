@@ -23,17 +23,23 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: games.json と assets/*/list.json を生成
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - run: python3 -m pip install --quiet pillow
+
+      - name: 公開用サイト(_site)を生成(画像の縮小・games.json・list.json)
         run: python3 scripts/build.py
 
       - name: 公開するファイルの一覧(確認用)
-        run: find . -path ./.git -prune -o -type f -print | sort
+        run: find _site -type f -printf '%s\t%p\n' | sort -k2
 
       - uses: actions/configure-pages@v5
 
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: .
+          path: _site
 
       - id: deployment
         uses: actions/deploy-pages@v4
@@ -41,7 +47,8 @@ jobs:
       - name: 公開結果の確認(確認用)
         run: |
           sleep 20
-          for f in index.html shared/common.js shared/faces.js games.json $(jq -r '.games[].href' games.json) $(ls assets/*/list.json 2>/dev/null); do
+          cd _site
+          for f in index.html shared/common.js shared/faces.js games.json $(jq -r '.games[].href' games.json) $(ls assets/*/list.json 2>/dev/null) $(jq -r '(.[0] // empty) | "assets/faces/" + .' assets/faces/list.json 2>/dev/null); do
             code=$(curl -s -o /dev/null -w "%{http_code}" "${{ steps.deployment.outputs.page_url }}$f?t=$(date +%s)")
             echo "$f -> $code"
           done
