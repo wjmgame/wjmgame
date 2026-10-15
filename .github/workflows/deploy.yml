@@ -48,7 +48,7 @@ jobs:
         run: |
           sleep 20
           cd _site
-          for f in index.html shared/common.js shared/faces.js games.json $(jq -r '.games[].href' games.json) $(ls assets/*/list.json 2>/dev/null) $(jq -r '(.[0] // empty) | "assets/faces/" + .' assets/faces/list.json 2>/dev/null); do
+          for f in index.html shared/common.js shared/faces.js sw.js precache.json games.json $(jq -r '.games[].href' games.json) $(ls assets/*/list.json 2>/dev/null) $(jq -r '(.[0] // empty) | "assets/faces/" + .' assets/faces/list.json 2>/dev/null); do
             code=$(curl -s -o /dev/null -w "%{http_code}" "${{ steps.deployment.outputs.page_url }}$f?t=$(date +%s)")
             echo "$f -> $code"
           done
