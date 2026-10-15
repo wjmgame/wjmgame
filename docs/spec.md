@@ -5,7 +5,7 @@
 /
 ├── index.html / sw.js / manifest.webmanifest   ルート固定(公開範囲・PWAの都合)
 ├── .github/workflows/deploy.yml                push で build.py を実行して公開
-├── scripts/build.py                            公開用の _site/ を生成(画像の縮小・games.json・list.json)
+├── scripts/build.py                            公開用の _site/ を生成(画像の縮小・games.json・list.json・sw.js への版数埋め込み)
 ├── shared/    common.js(音・ミュート・保護者ゲート・パス解決) / faces.js(顔写真) / theme.css(配色)
 ├── assets/    faces/(顔写真の元画像) icons/(アイコン) ほか。置いて push するだけ(縮小と list.json は自動)
 ├── games/<名前>/index.html   ゲーム本体(必要なら同じフォルダに game.js・style.css・専用素材)
@@ -47,10 +47,12 @@
 - 通信量を抑える: 公開サイズは小さく保つ(現在の合計は約150KB)
 - 配色は shared/theme.css(空色 #8fd3f4、コーラル #ff7a6b、サン #ffc83d、リーフ #4ccb8a、グレープ #8e7cff、文字色 #23305a)
 
-## キャッシュ(sw.js)
-- HTML・JS・CSS はキャッシュ優先で裏で更新(反映は次に開いたとき) / games.json と list.json は通信優先 / 画像はキャッシュにあれば再取得しない
-- sw.js 自体を変えたときは `CACHE` の版数を上げる(顔写真などの assets は、差し替えると名前が変わるので版数は不要)
-- ホーム画面のアプリは、更新後に2回開くと新しくなる
+## キャッシュと自動更新(sw.js)
+- 公開のたびに build.py が、サイト全体のハッシュを sw.js の `BUILD` に書き込む(`precache.json` も生成)。内容が変わると sw.js も変わり、ブラウザが更新を検知する。**`CACHE` の版数を手で上げる必要はない。`sw.js` の `BUILD = "dev"` は書き換えない**
+- 更新時は、新しい版の全ファイル(precache.json、1MB超は除く)を先読みしてから切り替える。1つでも失敗したら古い版のまま続ける
+- トップ画面は、新しい版に切り替わると1回だけ自動で再読み込みする。ゲーム中は再読み込みせず、次にトップへ戻ったとき新しくなる。アプリを前面に戻したときにも更新を確認する(開き直しは不要)
+- 配信中のファイルの扱い: HTML・JS・CSS はキャッシュを即表示して裏で最新版を確認 / games.json と list.json は通信優先 / 画像はキャッシュにあれば再取得しない(差し替えると名前が変わる)
+- ゲームや素材の追加で sw.js の更新は不要
 
 ## トラブル時
 - タイルが出ない: 公開URLの `games.json` が200で返るか確認。Actions の最後のステップ「公開結果の確認」が各ファイルの応答を出す。反映直後は古い404が残ることがある
