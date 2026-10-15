@@ -36,7 +36,10 @@
 - `Asobo.faces.urls(max)` → 画像URLの配列 / `Asobo.faces.canvases({max,size,onEach})` → 中央を正方形に切り抜いた canvas を読めたものから返す。一覧が無いときは 1.jpg, 2.jpg … の連番を探す(ローカル確認用)
 
 ## 素材を足す
-- `assets/<種類>/` に置いて push。icons 以外のフォルダは、画像は縮小(上と同じ)、音声(mp3/wav/ogg/m4a)はそのまま公開され、list.json が自動で作られる
+- `assets/<種類>/` に置いて push。画像は、フォルダごとの方針(`scripts/build.py` の `FOLDER_POLICY`)で縮小して公開される。音声(mp3/wav/ogg/m4a)はそのまま公開
+  - `faces` など(既定): 長辺480pxのWebPに変換し、`list.json` を自動生成する。出力名はハッシュ付きなので、`list.json` から読む
+  - `icons`: 名前と形式を保ったまま、長辺512pxを超えたら縮小、100KBを超えたら再圧縮する(小さければ元のまま)。ゲームやmanifestから `Asobo.url("assets/icons/star.png")` のように固定の名前で参照できる。`list.json` は作らない。manifest と apple-touch-icon のアイコンは、小さいので元のバイト列のまま公開される
+  - 新しい種類のフォルダは既定(WebP変換+list.json)になる。固定の名前で参照したいときは、`FOLDER_POLICY` に `"keep"` で追加する
 - そのゲーム専用の素材は `games/<名前>/` の中に置く。こちらは縮小されないので、先に小さくしておく(300KB超は check.py が警告)
 
 ## ローカルで確認
