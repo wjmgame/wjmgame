@@ -5,6 +5,7 @@
  - assets/<種類>/ の画像(icons を除く)は、長辺 480px の WebP に縮小して公開する。元画像は公開しない。音声はそのままコピー
    出力名は <元の名前>.<8桁ハッシュ>.webp。写真を差し替えると名前が変わるので、キャッシュの版数を上げなくてよい
  - games.json と assets/<種類>/list.json を生成する(list は元のファイル名の降順(自然順)。1枚目がはじめのリーダー)
+ - sw.js の BUILD(公開物全体のハッシュ)を書き換え、先読み対象の一覧 precache.json を生成する(内容が同じなら同じ BUILD)
  - 300KB を超えるファイルがあれば警告する
 Pillow が無い環境では、画像を縮小せずそのままコピーする(警告を出す)
 """
@@ -18,6 +19,7 @@ IMG_EXTS = {".jpg", ".jpeg", ".png", ".webp", ".gif", ".avif"}
 AUDIO_EXTS = {".mp3", ".wav", ".ogg", ".m4a"}
 MAX_EDGE, QUALITY = 480, 80
 WARN_BYTES = 300 * 1024
+PRECACHE_MAX = 1024 * 1024  # これより大きいファイルは先読みせず、使うときに取得する
 
 
 def natural_key(name):
@@ -101,6 +103,31 @@ def build_games():
     print("games.json:", json.dumps([g["id"] for g in games], ensure_ascii=False))
 
 
+def stamp_build():
+    files = []
+    for base, _, fs in os.walk(OUT):
+        for f in fs:
+            files.append(os.path.relpath(os.path.join(base, f), OUT).replace(os.sep, "/"))
+    files.sort()
+    h = hashlib.sha1()
+    for rel in files:
+        if rel == "sw.js":
+            continue
+        h.update(rel.encode())
+        h.update(open(os.path.join(OUT, rel), "rb").read())
+    build = h.hexdigest()[:10]
+    sw_path = os.path.join(OUT, "sw.js")
+    sw = open(sw_path, encoding="utf-8").read()
+    stamped = sw.replace('const BUILD = "dev";', f'const BUILD = "{build}";')
+    if stamped == sw:
+        sys.exit('error: sw.js に const BUILD = "dev"; が見つかりません')
+    open(sw_path, "w", encoding="utf-8").write(stamped)
+    pre = ["./"] + [r for r in files if r != "sw.js" and os.path.getsize(os.path.join(OUT, r)) <= PRECACHE_MAX]
+    with open(os.path.join(OUT, "precache.json"), "w", encoding="utf-8") as fp:
+        json.dump({"build": build, "files": pre}, fp, ensure_ascii=False)
+    print(f"BUILD: {build} / 先読み {len(pre)} ファイル")
+
+
 def report():
     total = 0
     for base, _, fs in os.walk(OUT):
@@ -118,4 +145,5 @@ if __name__ == "__main__":
     shutil.copytree(".", OUT, ignore=ignore)
     build_assets()
     build_games()
+    stamp_build()
     report()
