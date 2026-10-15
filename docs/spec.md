@@ -5,7 +5,7 @@
 /
 ├── index.html / sw.js / manifest.webmanifest   ルート固定(公開範囲・PWAの都合)
 ├── .github/workflows/deploy.yml                push で build.py を実行して公開
-├── scripts/build.py                            公開用の _site/ を生成(画像の縮小・games.json・list.json・sw.js への版数埋め込み)
+├── scripts/   build.py(公開用の _site/ を生成) / check.py(公開前チェック) / browser_test.py(ブラウザでの実行テスト) / checks.json(テストのオン・オフ)
 ├── shared/    common.js(音・ミュート・保護者ゲート・パス解決) / faces.js(顔写真) / theme.css(配色)
 ├── assets/    faces/(顔写真の元画像) icons/(アイコン) ほか。置いて push するだけ(縮小と list.json は自動)
 ├── games/<名前>/index.html   ゲーム本体(必要なら同じフォルダに game.js・style.css・専用素材)
@@ -37,10 +37,10 @@
 
 ## 素材を足す
 - `assets/<種類>/` に置いて push。icons 以外のフォルダは、画像は縮小(上と同じ)、音声(mp3/wav/ogg/m4a)はそのまま公開され、list.json が自動で作られる
-- そのゲーム専用の素材は `games/<名前>/` の中に置く。こちらは縮小されないので、先に小さくしておく(300KB超は build.py が警告)
+- そのゲーム専用の素材は `games/<名前>/` の中に置く。こちらは縮小されないので、先に小さくしておく(300KB超は check.py が警告)
 
 ## ローカルで確認
-- `python3 scripts/build.py` で `_site/` ができる(Pillow が必要: `pip install pillow`)。`python3 -m http.server -d _site` で開いて確認する。`_site/` は git に入れない
+- `python3 scripts/build.py` で `_site/` ができる(Pillow が必要: `pip install pillow`)。`python3 scripts/check.py` で公開前チェック、`python3 scripts/browser_test.py` でブラウザテスト(Playwright が必要: `pip install playwright`)。`python3 -m http.server -d _site` で開いて確認もできる。`_site/` は git に入れない
 
 ## 作りの決まり
 - タップのみ・失敗なし・マルチタッチ対応・どこをタップしても反応・文字が読めなくても遊べる
@@ -53,6 +53,14 @@
 - トップ画面は、新しい版に切り替わると1回だけ自動で再読み込みする。ゲーム中は再読み込みせず、次にトップへ戻ったとき新しくなる。アプリを前面に戻したときにも更新を確認する(開き直しは不要)
 - 配信中のファイルの扱い: HTML・JS・CSS はキャッシュを即表示して裏で最新版を確認 / games.json と list.json は通信優先 / 画像はキャッシュにあれば再取得しない(差し替えると名前が変わる)
 - ゲームや素材の追加で sw.js の更新は不要
+
+## 公開前チェックとブラウザテスト
+- 実行のきっかけ: `main` への push(公開あり) / プルリクエスト(チェックのみ、公開しない) / Actions タブからの手動実行(公開あり)。順番は build → check → ブラウザテスト → 公開。**エラーがあれば公開されず、今の公開版が残る**
+- **公開を止めるエラー(check.py)**: 参照ファイルの実在(HTML・manifest・games.json・list.json・precache.json) / ゲームのメタタグ4種(game-title・icon・color・order。color は #色コード、order は数字) / JavaScript の構文 / 各ゲームが shared/common.js を読み込んでいること(Asobo.faces を使うなら faces.js も) / 壊れた画像 / 極端に大きいファイル(1MB超、音声は3MB超)
+- **警告だけ(公開は止めない)**: 300KB超のファイル / game-order の重複 / 音の自前実装(AudioContext)・ミュートの自前読み込み・相対パスの直書き(`../assets/` など)
+- **ブラウザでの実行テスト(browser_test.py)**: トップのタイル数 / 各ゲームを開いて数回タップしたときの JS エラー・通信エラー / 顔写真の読み込み / 右上長押しでトップへ戻る / ミュート設定の引き継ぎ / 自動更新の先読みと、通信なしでの起動。失敗したテストは1回やり直す
+- **ブラウザテストのオン・オフ**: `scripts/checks.json` の `browser_test` を `"on"`(失敗で公開を止める) / `"warn"`(失敗しても公開し、警告を出す) / `"off"`(実行しない)に書き換えてコミットする。1回だけ飛ばすときは、コミットメッセージに `[skip-browser]` を入れる
+- 自動では判断できないこと: 遊べるか・見た目・音の良し悪しは、実機で確認する
 
 ## トラブル時
 - タイルが出ない: 公開URLの `games.json` が200で返るか確認。Actions の最後のステップ「公開結果の確認」が各ファイルの応答を出す。反映直後は古い404が残ることがある
