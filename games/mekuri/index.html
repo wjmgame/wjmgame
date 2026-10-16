@@ -57,14 +57,10 @@
     return a;
   }
 
-  // 写真の一覧を読み込む(assets/photos/list.json は build.py が自動生成)
+  // 写真の一覧を読み込む(assets/mekuri/list.json は build.py が自動生成。順番は毎回ランダム)
   function loadList(){
-    return fetch(Asobo.url("assets/photos/list.json"), {cache:"no-cache"})
-      .then(function(r){ return r.ok ? r.json() : []; })
-      .then(function(a){
-        return (a || []).filter(function(n){ return /\.(jpe?g|png|webp|gif|avif)$/i.test(n); })
-          .map(function(n){ return {t:"img", v:Asobo.url("assets/photos/" + encodeURIComponent(n))}; });
-      })
+    return Asobo.assets.urls("mekuri")
+      .then(function(urls){ return urls.map(function(u){ return {t:"img", v:u}; }); })
       .catch(function(){ return []; });
   }
 
