@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>りんごなげ</title>
+<meta name="game-title" content="りんごなげ">
+<meta name="game-icon" content="🍎">
+<meta name="game-color" content="#ff7a6b">
+<meta name="game-order" content="70">
+<script src="../../shared/common.js"></script>
+<style>
+html,body{margin:0;height:100%;overflow:hidden;background:#8fd3f4;touch-action:none;-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+canvas{display:block;width:100%;height:100%;touch-action:none}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script>
+(function () {
+  'use strict';
+
+  /* 動物は後で差し替える。9種類ぶんのアイコンをここに並べる(いまは全部 grape1) */
+  var ANIMAL_URLS = [
+    'assets/icons/grape1.png', 'assets/icons/grape1.png', 'assets/icons/grape1.png',
+    'assets/icons/grape1.png', 'assets/icons/grape1.png', 'assets/icons/grape1.png',
+    'assets/icons/grape1.png', 'assets/icons/grape1.png', 'assets/icons/grape1.png'
+  ];
+  var APPLE_SLIDE = 'assets/icons/apple1.png';
+  var APPLE_FLY = 'assets/icons/apple2.png';
+
+  var LANES = 3;          /* レーン数 */
+  var STACK = 2;          /* 1レーンに並ぶ動物の数 */
+  var SPAWN_SEC = 3;      /* 動物が増える間隔(秒) */
+  var SLIDE_SPEED = 0.42; /* りんごの横移動(画面幅/秒) */
+  var FLY_SPEED = 1.5;    /* りんごの飛ぶ速さ(画面高さ/秒) */
+
+  var canvas = document.getElementById('c');
+  var ctx = canvas.getContext('2d');
+  var W = 0, H = 0, dpr = 1;
+  var L = {};
+
+  var cache = {};
+  function load(path) {
+    if (!cache[path]) {
+      var im = new Image();
+      im.src = Asobo.url(path);
+      cache[path] = im;
+    }
+    return cache[path];
+  }
+  load(APPLE_SLIDE); load(APPLE_FLY);
+  ANIMAL_URLS.forEach(load);
+
+  var lanes = [];
+  for (var i = 0; i < LANES; i++) lanes.push([]);
+  var leaving = [];
+  var spawnT = 0.5;
+  var apple = { x: 0, dir: 1, state: 'slide', y: 0, lane: 0, appearAt: 0 };
+
+  function resize() {
+    dpr = Math.min(window.devicePixelRatio || 1, 3);
+    W = window.innerWidth; H = window.innerHeight;
+    canvas.width = Math.round(W * dpr);
+    canvas.height = Math.round(H * dpr);
+    L.laneW = W / LANES;
+    L.groundY = H * 0.6;
+    var areaBottom = H * 0.58;
+    var gapRate = 0.08;
+    var sh = Math.min(L.laneW * 0.86, H * 0.2);
+    sh = Math.min(sh, (areaBottom - 78) / (STACK + gapRate * (STACK - 1)));
+    L.sh = Math.max(sh, 24);
+    L.gap = L.sh * gapRate;
+    L.slot0Y = areaBottom - L.sh / 2 - 8;
+    L.appleSize = Math.min(W * 0.2, H * 0.14, 96);
+    L.trackY = H * 0.8;
+    L.minX = L.appleSize / 2 + 12;
+    L.maxX = W - L.appleSize / 2 - 12;
+    if (apple.x === 0) apple.x = W / 2;
+    apple.x = Math.max(L.minX, Math.min(L.maxX, apple.x));
+  }
+
+  function slotY(pos) { return L.slot0Y - pos * (L.sh + L.gap); }
+  function laneX(i) { return L.laneW * (i + 0.5); }
+
+  function spawn() {
+    var open = [];
+    for (var i = 0; i < LANES; i++) if (lanes[i].length < STACK) open.push(i);
+    if (!open.length) return;
+    var li = open[Math.floor(Math.random() * open.length)];
+    var url = ANIMAL_URLS[Math.floor(Math.random() * ANIMAL_URLS.length)];
+    lanes[li].push({ img: load(url), pos: lanes[li].length, age: 0 });
+  }
+
+  function sound(fn, a, b, c, d) {
+    try { if (window.Asobo && Asobo[fn]) Asobo[fn](a, b, c, d); } catch (e) {}
+  }
+
+  function onDown() {
+    var now = performance.now();
+    if (apple.state !== 'slide' || now < apple.appearAt + 150) return;
+    apple.state = 'fly';
+    apple.y = L.trackY;
+    apple.lane = Math.max(0, Math.min(LANES - 1, Math.floor(apple.x / L.laneW)));
+    sound('tone', 660, 0.1, 0.12, 1.6);
+  }
+
+  function resetApple() {
+    apple.state = 'slide';
+    apple.appearAt = performance.now();
+  }
+
+  function update(dt) {
+    spawnT -= dt;
+    if (spawnT <= 0) { spawnT = SPAWN_SEC; spawn(); }
+
+    for (var i = 0; i < LANES; i++) {
+      for (var j = 0; j < lanes[i].length; j++) {
+        var a = lanes[i][j];
+        a.age += dt;
+        a.pos += (j - a.pos) * Math.min(1, dt * 9);
+      }
+    }
+
+    for (var k = leaving.length - 1; k >= 0; k--) {
+      var v = leaving[k];
+      v.ox += v.dir * W * 1.6 * dt;
+      v.rot += v.dir * dt * 3;
+      if (Math.abs(v.ox) > W) leaving.splice(k, 1);
+    }
+
+    if (apple.state === 'slide') {
+      apple.x += apple.dir * SLIDE_SPEED * W * dt;
+      if (apple.x > L.maxX) { apple.x = L.maxX; apple.dir = -1; }
+      if (apple.x < L.minX) { apple.x = L.minX; apple.dir = 1; }
+    } else if (apple.state === 'fly') {
+      apple.y -= FLY_SPEED * H * dt;
+      var target = lanes[apple.lane][0];
+      if (target) {
+        var ty = slotY(target.pos);
+        if (apple.y - L.appleSize * 0.4 <= ty + L.sh * 0.4) {
+          lanes[apple.lane].shift();
+          var cx = laneX(apple.lane);
+          var dir = apple.x < cx ? -1 : (apple.x > cx ? 1 : (Math.random() < 0.5 ? -1 : 1));
+          leaving.push({ img: target.img, x: cx, y: ty, ox: 0, dir: dir, rot: 0 });
+          sound('pop');
+          resetApple();
+        }
+      } else if (apple.y < -L.appleSize) {
+        resetApple();
+      }
+    }
+  }
+
+  function roundRect(x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
+  }
+
+  function drawIcon(im, cx, cy, size, rot, alpha, fallback) {
+    ctx.save();
+    ctx.translate(cx, cy);
+    if (rot) ctx.rotate(rot);
+    if (alpha != null) ctx.globalAlpha = alpha;
+    if (im.complete && im.naturalWidth) {
+      var s = size / Math.max(im.naturalWidth, im.naturalHeight);
+      var w = im.naturalWidth * s, h = im.naturalHeight * s;
+      ctx.drawImage(im, -w / 2, -h / 2, w, h);
+    } else {
+      ctx.fillStyle = fallback;
+      ctx.beginPath(); ctx.arc(0, 0, size * 0.4, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  function easeOutBack(t) {
+    var c1 = 1.70158, c3 = c1 + 1;
+    return 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2);
+  }
+
+  function draw() {
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.fillStyle = '#8fd3f4';
+    ctx.fillRect(0, 0, W, H);
+    ctx.fillStyle = '#bdeccb';
+    ctx.fillRect(0, L.groundY, W, H - L.groundY);
+
+    if (apple.state === 'slide') {
+      var hl = Math.max(0, Math.min(LANES - 1, Math.floor(apple.x / L.laneW)));
+      ctx.fillStyle = 'rgba(255,255,255,0.22)';
+      ctx.fillRect(hl * L.laneW, 0, L.laneW, L.groundY);
+    }
+
+    ctx.strokeStyle = 'rgba(255,255,255,0.7)';
+    ctx.lineWidth = 3;
+    ctx.setLineDash([10, 10]);
+    for (var d = 1; d < LANES; d++) {
+      ctx.beginPath(); ctx.moveTo(d * L.laneW, 0); ctx.lineTo(d * L.laneW, L.groundY); ctx.stroke();
+    }
+    ctx.beginPath(); ctx.moveTo(0, L.groundY); ctx.lineTo(W, L.groundY); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(L.minX, L.trackY); ctx.lineTo(L.maxX, L.trackY); ctx.stroke();
+    ctx.setLineDash([]);
+
+    ctx.fillStyle = 'rgba(255,255,255,0.28)';
+    for (var li = 0; li < LANES; li++) {
+      for (var si = 0; si < STACK; si++) {
+        roundRect(laneX(li) - L.sh / 2, slotY(si) - L.sh / 2, L.sh, L.sh, L.sh * 0.18);
+        ctx.fill();
+      }
+    }
+
+    for (var i = 0; i < LANES; i++) {
+      for (var j = lanes[i].length - 1; j >= 0; j--) {
+        var a = lanes[i][j];
+        var t = Math.min(1, a.age / 0.3);
+        var sc = easeOutBack(t);
+        drawIcon(a.img, laneX(i), slotY(a.pos), L.sh * 0.9 * sc, 0, null, '#8e7cff');
+      }
+    }
+
+    for (var k = 0; k < leaving.length; k++) {
+      var v = leaving[k];
+      drawIcon(v.img, v.x + v.ox, v.y, L.sh * 0.9, v.rot * 0.1, null, '#8e7cff');
+      drawIcon(load(APPLE_SLIDE), v.x + v.ox + v.dir * L.sh * 0.35, v.y + L.sh * 0.25, L.sh * 0.42, 0, null, '#ff7a6b');
+    }
+
+    if (apple.state === 'slide') {
+      var fade = Math.min(1, (performance.now() - apple.appearAt) / 250);
+      drawIcon(load(APPLE_SLIDE), apple.x, L.trackY, L.appleSize, 0, fade, '#ff7a6b');
+    } else {
+      drawIcon(load(APPLE_FLY), apple.x, apple.y, L.appleSize * 1.05, 0, null, '#ff7a6b');
+    }
+  }
+
+  var last = performance.now();
+  function frame(now) {
+    var dt = Math.min(0.05, (now - last) / 1000);
+    last = now;
+    update(dt);
+    draw();
+    requestAnimationFrame(frame);
+  }
+
+  window.addEventListener('resize', resize);
+  window.addEventListener('orientationchange', resize);
+  window.addEventListener('pointerdown', onDown, { passive: true });
+  resize();
+  resetApple();
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
