@@ -16,12 +16,12 @@
 html,body{height:100%;margin:0;overflow:hidden;background:var(--sky);color:var(--ink);font-family:"Hiragino Maru Gothic ProN","Hiragino Sans",sans-serif;touch-action:none;overscroll-behavior:none}
 body{display:flex;flex-direction:column;padding:env(safe-area-inset-top) calc(12px + env(safe-area-inset-right)) env(safe-area-inset-bottom) calc(12px + env(safe-area-inset-left))}
 main{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;padding-top:12px}
-#art{height:100%;width:100%;max-width:640px;background:#fff;border-radius:24px;border:4px solid var(--ink)}
+#art{height:100%;width:100%;max-width:640px;background:transparent;overflow:hidden;border-radius:24px;border:4px solid var(--ink)}
 .r{stroke:var(--ink);stroke-width:4;stroke-linejoin:round;stroke-linecap:round}
-#pal{display:flex;flex-wrap:wrap;justify-content:center;gap:10px;padding:12px 0 6px}
-.c{width:52px;height:52px;border-radius:50%;border:4px solid #fff;box-shadow:0 0 0 3px #23305a55;padding:0;transition:transform .12s}
+#pal{display:grid;grid-template-columns:repeat(6,minmax(0,52px));justify-content:center;gap:8px;padding:12px 0 6px}
+@media (max-height:520px){#pal{grid-template-columns:repeat(9,minmax(0,40px));gap:6px;padding:6px 0 2px}}
+.c{width:100%;aspect-ratio:1;border-radius:50%;border:4px solid #fff;box-shadow:0 0 0 3px #23305a55;padding:0;transition:transform .12s}
 .c.on{box-shadow:0 0 0 5px var(--ink);transform:scale(1.15)}
-.c.er{display:flex;align-items:center;justify-content:center;font-size:24px;font-weight:700;background:#fff;color:var(--ink)}
 footer{display:flex;justify-content:space-between;gap:12px;padding:6px 0 12px}
 .btn{flex:1;height:56px;border:0;border-radius:28px;background:var(--btn);color:var(--ink);font-size:24px;font-weight:700;box-shadow:0 4px 0 #d9ae2f}
 .btn:active{transform:translateY(3px);box-shadow:0 1px 0 #d9ae2f}
@@ -40,42 +40,110 @@ footer{display:flex;justify-content:space-between;gap:12px;padding:6px 0 12px}
 </footer>
 <script>
 const R=(t,a)=>`<${t} class="r" fill="#fff" ${a}/>`;
-const bg=()=>R('rect','x="0" y="0" width="300" height="300" stroke-width="0"');
+const P=d=>R('path',`d="${d}"`);
+const E=(x,y,a,b)=>R('ellipse',`cx="${x}" cy="${y}" rx="${a}" ry="${b}"`);
+const C=(x,y,r)=>R('circle',`cx="${x}" cy="${y}" r="${r}"`);
+const D=d=>`<path d="${d}" fill="none" stroke="#23305a" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" pointer-events="none"/>`;
+/* 背景は表示枠より大きく取り、上下の余白まで一緒に塗れるようにする */
+const bg=()=>R('rect','x="-1000" y="-1000" width="2300" height="2300" stroke-width="0"');
 const PICS=[
+ // くるま
  [bg(),
-  R('rect','x="0" y="215" width="300" height="85" stroke-width="0"'),
-  R('path','d="M95 150 L120 100 H190 L220 150 Z"'),
+  R('rect','x="-1000" y="215" width="2300" height="1000" stroke-width="0"'),
+  P('M95 150 L120 100 H190 L220 150 Z'),
   R('rect','x="40" y="150" width="220" height="60" rx="14"'),
-  R('path','d="M108 145 L127 108 H150 V145 Z"'),
-  R('path','d="M160 145 V108 H185 L207 145 Z"'),
-  R('circle','cx="95" cy="215" r="28"'),R('circle','cx="205" cy="215" r="28"'),
-  R('circle','cx="248" cy="40" r="26"')],
+  P('M108 145 L127 108 H150 V145 Z'),P('M160 145 V108 H185 L207 145 Z'),
+  C(95,215,28),C(205,215,28),C(248,40,26)],
+ // りんご
  [bg(),
-  R('path','d="M150 90 C100 60 40 100 55 180 C65 240 110 270 150 255 C190 270 235 240 245 180 C260 100 200 60 150 90 Z"'),
-  R('path','d="M150 90 C150 65 155 50 170 40 L180 50 C168 58 165 72 165 92 Z"'),
-  R('path','d="M172 55 C200 25 240 30 250 50 C225 70 195 70 172 55 Z"')],
+  P('M150 90 C100 60 40 100 55 180 C65 240 110 270 150 255 C190 270 235 240 245 180 C260 100 200 60 150 90 Z'),
+  P('M150 90 C150 65 155 50 170 40 L180 50 C168 58 165 72 165 92 Z'),
+  P('M172 55 C200 25 240 30 250 50 C225 70 195 70 172 55 Z')],
+ // さかな
  [bg(),
-  R('path','d="M215 150 L275 100 L275 200 Z"'),
-  R('ellipse','cx="140" cy="150" rx="95" ry="65"'),
-  R('path','d="M120 95 C140 60 175 60 185 95 Z"'),
-  R('path','d="M115 205 C135 240 170 240 180 205 Z"'),
-  R('circle','cx="80" cy="135" r="16"'),
-  R('circle','cx="200" cy="165" r="14"')],
+  P('M205 150 C235 120 255 95 275 90 C285 125 285 175 275 210 C255 205 235 180 205 150 Z'),
+  P('M100 95 C110 50 155 40 190 105 Z'),
+  P('M110 210 C120 250 165 255 185 205 Z'),
+  P('M30 150 C30 100 100 75 160 85 C195 95 215 125 215 150 C215 175 195 205 160 215 C100 225 30 200 30 150 Z'),
+  P('M150 90 C170 120 170 180 150 212 C180 205 195 175 195 150 C195 125 185 100 150 90 Z'),
+  P('M115 150 C135 135 160 150 165 175 C145 185 120 175 115 150 Z'),
+  C(75,135,16),C(40,75,13),C(68,48,9)],
+ // ねこ
  [bg(),
-  R('ellipse','cx="150" cy="235" rx="75" ry="55"'),
-  R('path','d="M75 110 L80 40 L130 80 Z"'),
-  R('path','d="M225 110 L220 40 L170 80 Z"'),
-  R('circle','cx="150" cy="130" r="80"'),
-  R('circle','cx="120" cy="120" r="14"'),R('circle','cx="180" cy="120" r="14"'),
-  R('path','d="M135 150 H165 L150 168 Z"')],
+  P('M205 250 C260 250 275 190 250 160 C240 150 228 160 238 172 C252 190 245 225 200 228 Z'),
+  E(150,230,70,58),E(150,240,38,36),E(118,282,22,12),E(182,282,22,12),
+  P('M75 115 L78 40 L130 72 Z'),P('M225 115 L222 40 L170 72 Z'),
+  P('M88 95 L90 62 L115 80 Z'),P('M212 95 L210 62 L185 80 Z'),
+  C(150,135,78),E(150,160,30,22),
+  E(118,125,12,15),E(182,125,12,15),
+  P('M141 148 H159 L150 159 Z'),
+  D('M150 159 V168 M150 168 C144 176 136 174 133 169 M150 168 C156 176 164 174 167 169'),
+  D('M105 160 L60 150 M105 168 L58 172 M195 160 L240 150 M195 168 L242 172'),
+  D('M150 58 V76 M133 62 L137 78 M167 62 L163 78')],
+ // アイス
  [bg(),
-  R('path','d="M95 160 L205 160 L150 280 Z"'),
-  R('circle','cx="150" cy="120" r="55"'),
-  R('path','d="M85 155 C85 135 215 135 215 155 C215 170 85 170 85 155 Z"'),
-  R('circle','cx="150" cy="52" r="20"')]
+  P('M92 178 L208 178 L150 290 Z'),
+  D('M108 210 H192 M127 245 H173 M150 180 V288'),
+  P('M70 165 C58 125 100 100 150 104 C200 100 242 125 230 165 C228 185 208 190 196 182 C186 196 164 194 154 184 C144 196 120 196 110 184 C96 190 72 185 70 165 Z'),
+  P('M95 112 C85 70 120 45 150 47 C182 45 215 70 205 112 C190 124 110 124 95 112 Z'),
+  C(110,150,9),C(190,145,9),
+  C(150,40,14),
+  D('M150 26 C152 14 160 8 170 6')],
+ // うさぎ
+ [bg(),
+  E(115,70,24,55),E(185,70,24,55),E(115,72,11,38),E(185,72,11,38),
+  E(150,235,68,55),E(150,245,35,35),E(118,285,22,12),E(182,285,22,12),
+  E(150,150,70,62),E(105,170,12,12),E(195,170,12,12),
+  C(120,145,10),C(180,145,10),E(150,165,8,6),
+  D('M150 171 V178 M150 178 C144 186 136 184 134 179 M150 178 C156 186 164 184 166 179')],
+ // くま
+ [bg(),
+  C(95,75,28),C(205,75,28),C(92,72,12),C(208,72,12),
+  E(150,245,70,55),E(150,250,40,36),
+  C(150,140,80),E(150,165,34,26),
+  C(115,125,10),C(185,125,10),E(150,152,12,8),
+  D('M150 160 V172 M150 172 C142 182 132 178 130 172 M150 172 C158 182 168 178 170 172')],
+ // ぞう
+ [bg(),
+  C(70,140,58),C(230,140,58),C(75,142,35),C(225,142,35),
+  C(150,135,75),
+  P('M120 150 H180 V235 C180 270 160 285 140 285 C120 285 112 270 125 262 C135 255 120 250 120 230 Z'),
+  D('M120 185 H138 M180 200 H162 M120 212 H136'),
+  P('M105 170 C95 195 100 215 118 222 C115 205 118 190 125 175 Z'),
+  P('M195 170 C205 195 200 215 182 222 C185 205 182 190 175 175 Z'),
+  C(115,115,10),C(185,115,10)],
+ // かめ
+ [bg(),
+  R('rect','x="-1000" y="232" width="2300" height="1000" stroke-width="0"'),
+  P('M60 215 L35 232 L65 235 Z'),
+  E(105,238,22,18),E(205,238,22,18),
+  E(240,195,25,18),E(268,175,28,26),
+  P('M45 215 C45 120 105 85 150 85 C195 85 255 120 255 215 Z'),
+  C(150,150,30),C(95,180,20),C(205,180,20),C(275,168,9),
+  D('M270 188 C278 190 288 188 292 182')],
+ // ぶた
+ [bg(),
+  P('M70 110 C40 70 62 38 112 62 Z'),P('M230 110 C260 70 238 38 188 62 Z'),
+  E(150,240,72,52),
+  C(150,145,82),E(150,170,38,28),E(138,170,6,9),E(162,170,6,9),
+  C(112,125,10),C(188,125,10),C(95,165,12),C(205,165,12),
+  D('M135 192 C145 200 155 200 165 192')],
+ // ちょうちょ
+ [bg(),
+  P('M148 140 C120 60 50 40 35 85 C25 120 80 150 148 150 Z'),
+  P('M152 140 C180 60 250 40 265 85 C275 120 220 150 152 150 Z'),
+  P('M148 150 C95 155 55 185 70 225 C85 255 135 225 148 175 Z'),
+  P('M152 150 C205 155 245 185 230 225 C215 255 165 225 152 175 Z'),
+  C(90,95,18),C(210,95,18),C(100,200,14),C(200,200,14),
+  E(150,165,10,60),C(150,100,14),
+  D('M146 90 C140 65 130 55 120 52 M154 90 C160 65 170 55 180 52')]
 ];
-const COLORS=['#ff6b5e','#ff9f43','#ffd23f','#5fc76b','#4aa8ff','#9b6bd6','#ff8ad8','#a0693c','#23305a'];
-const NOTES=[262,294,330,392,440,523,587,659,784]; // ドレミソラ…(音階)
+/* 18色(最後の白は、けしごむの代わり) */
+const COLORS=['#ff6b5e','#ff9f43','#ffd23f','#b6e24b','#5fc76b','#2e9e5b',
+ '#8fd3f4','#4aa8ff','#23305a','#9b6bd6','#cdb4f0','#ff8ad8',
+ '#ffc8d8','#f3d2a2','#a0693c','#a8b0bf','#2b2b2b','#ffffff'];
+const SC=[0,2,4,5,7,9,11]; // 音階(ドレミ…)
+const NOTES=COLORS.map((_,i)=>Math.round(196*2**((SC[i%7]+12*Math.floor(i/7))/12)));
 let cur=0, idx=0;
 const art=document.getElementById('art'), pal=document.getElementById('pal');
 
@@ -98,31 +166,27 @@ COLORS.forEach((col,k)=>{
   b.addEventListener('pointerdown',()=>{sel(b,k);beep(NOTES[k],.2);});
   pal.appendChild(b);
 });
-const er=document.createElement('button');
-er.className='c er';er.textContent='✕';er.setAttribute('aria-label','けしごむ');
-er.addEventListener('pointerdown',()=>{sel(er,-1);beep(200,.15);});
-pal.appendChild(er);
 
 /* どこをタップしても反応(キラッと光る+音)。複数指OK */
 document.addEventListener('pointerdown',e=>{
   const s=document.createElement('div');
   s.className='spark';
   s.style.left=e.clientX+'px';s.style.top=e.clientY+'px';
-  s.style.background=cur>=0?COLORS[cur]:'#fff';
+  s.style.background=COLORS[cur];
   document.body.appendChild(s);
   setTimeout(()=>s.remove(),600);
 });
 art.addEventListener('pointerdown',e=>{
   const t=e.target.closest('.r');
   if(!t)return;
-  t.setAttribute('fill',cur>=0?COLORS[cur]:'#fff');
-  beep(cur>=0?NOTES[cur]:200,.25);
+  t.setAttribute('fill',COLORS[cur]);
+  beep(NOTES[cur],.25);
 });
 document.getElementById('prev').addEventListener('pointerdown',()=>{show(idx-1);beep(330,.15);});
 document.getElementById('next').addEventListener('pointerdown',()=>{show(idx+1);beep(392,.15);});
 document.getElementById('reset').addEventListener('pointerdown',()=>{show(idx);beep(262,.2);});
 
-show(0);
+show(Math.floor(Math.random()*PICS.length)); // 最初の絵はランダム
 </script>
 </body>
 </html>
