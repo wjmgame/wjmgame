@@ -28,7 +28,7 @@
 - パス: `Asobo.url("assets/...")` でルート基準のURLを得る / `Asobo.home()` でトップへ戻る。`../` などの相対パスを直書きしない(フォルダの深さが変わっても動く)
 - 音: `muted()` / `setMuted(v)` / `tone(freq,dur,vol,glide=1.5)`(音階は glide=1) / `noise()` / `blip(i)` / `pop()` / `SCALE`。ミュートは localStorage の `muted` で全ゲーム共通。音やミュートを自前実装しない
 - 素材の一覧: `Asobo.assets.urls("フォルダ", {max, shuffle, ext})` が `assets/<フォルダ>/list.json` を読んで、URLの配列を返す。**順番は毎回ランダム**(`shuffle:false` でファイル名の降順)。`max` を指定すると、全体からランダムにその数だけ選ぶ。`ext` は対象の拡張子の正規表現(既定は画像)。画像の読み込みを自前で書かない
-- 画面の隅のボタン: `Asobo.cornerButton({corner, icon, label, onHold})`。薄い半透明のアイコンを常に表示し、操作は1.5秒の長押しだけ(長押し中に輪が広がる)。右上=戻る🏠(自動で付く)、左上=設定⚙️(ぞろぞろ)。トップは右上に保護者メニュー⚙️。ゲームごとに隅のボタンを自前で作らない
+- 画面の隅のボタン: `Asobo.cornerButton({corner, icon, label, onHold})`(`corner` は `'left'`=左上 / `'right'`=右上。`'top-left'` などは使えない。例: `Asobo.cornerButton({corner:'left', icon:'⚙️', label:'設定（長押し）', onHold: openPanel})`)。薄い半透明のアイコンを常に表示し、操作は1.5秒の長押しだけ(長押し中に輪が広がる)。右上=戻る🏠(自動で付く)、左上=設定⚙️(ぞろぞろ)。トップは右上に保護者メニュー⚙️。ゲームごとに隅のボタンを自前で作らない
 - 自動で行うこと: 右上に🏠ボタン(長押しでトップへ戻る)、ズーム・長押しメニューの抑止、iOS向け音の初期化。トップは `<html data-asobo="top">` で🏠を付けず、独自の保護者メニュー(音オン/オフ)を持つ
 
 ## 顔写真(faces.js)
