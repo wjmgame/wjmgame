@@ -63,7 +63,7 @@ if (A.faces) A.faces.canvases({ max: FACE_MAX, size: 160, onEach: (c) => { c.ok 
 const COLORS = ['#ff7a6b', '#4ccb8a', '#8e7cff', '#ff9ad5', '#5cc8ff', '#ffa24d'];
 const LEADER_COLOR = '#ffc83d';
 
-/* 設定: 画面の左上を1.5秒長押しで変更(この端末に保存される) */
+/* 設定: 画面の左上の薄い⚙️を1.5秒長押しで変更(この端末に保存される) */
 const MAX_LANES = 7;
 const GAPS = [1.5, 1.8, 2.1, 2.4, 2.7, 3.0];
 const DOUBLES = [0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.7, 1];
@@ -86,7 +86,7 @@ function applyLanes() {
   ALL = Array.from({ length: LANES }, (_, i) => i);
 }
 applyLanes();
-let paused = false, gateTimer = 0;
+let paused = false;
 let leader = { id: 0 }, shift = 0; // shift: リーダー交代の動き(1→0)
 const colorOf = id => id === 0 ? LEADER_COLOR : COLORS[id % COLORS.length];
 
@@ -243,20 +243,14 @@ function move(dir) {
 }
 const ptrs = new Map();
 cv.addEventListener('pointerdown', e => {
-  const q = { x: e.clientX, moved: false, gate: false };
+  const q = { x: e.clientX, moved: false };
   ptrs.set(e.pointerId, q);
-  if (e.clientX < 100 && e.clientY < 100) { // 左上の長押しで設定
-    q.gate = true;
-    clearTimeout(gateTimer);
-    gateTimer = setTimeout(openPanel, 1500);
-  }
   begin();
   try { cv.setPointerCapture(e.pointerId); } catch (_) {}
 });
 cv.addEventListener('pointermove', e => {
   const p = ptrs.get(e.pointerId);
   if (!p) return;
-  if (p.gate && (e.clientX >= 100 || e.clientY >= 100)) { p.gate = false; clearTimeout(gateTimer); }
   const dx = e.clientX - p.x;
   if (Math.abs(dx) >= Math.max(24, laneW * 0.22)) {
     move(dx > 0 ? 1 : -1);
@@ -265,7 +259,6 @@ cv.addEventListener('pointermove', e => {
 });
 ['pointerup', 'pointercancel'].forEach(ev => cv.addEventListener(ev, e => {
   const p = ptrs.get(e.pointerId);
-  if (p && p.gate) clearTimeout(gateTimer);
   if (p && !p.moved) { bump = 1; snd('tone', 700, 0.07, 0.12, 1.3); } // タップでもぴょん
   ptrs.delete(e.pointerId);
 }));
@@ -509,6 +502,7 @@ function resetGame() {
   fillRows();
 }
 function openPanel() { paused = true; ptrs.clear(); refreshPanel(); panel.hidden = false; }
+if (window.Asobo && Asobo.cornerButton) Asobo.cornerButton({ corner: 'left', icon: '⚙️', label: '設定（長押し）', onHold: openPanel });
 selLanes.onchange = () => { settings.lanes = +selLanes.value; clampSettings(); applyLanes(); saveSettings(); refreshPanel(); resetGame(); };
 selRocks.onchange = () => { settings.maxRocks = +selRocks.value; clampSettings(); saveSettings(); resetGame(); };
 selFriend.onchange = () => { settings.friendRate = +selFriend.value; clampSettings(); saveSettings(); resetGame(); };
