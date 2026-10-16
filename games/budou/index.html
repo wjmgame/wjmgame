@@ -227,14 +227,15 @@
     g.addColorStop(0, SKY); g.addColorStop(1, '#e4f6ff');
     cx.fillStyle = g; cx.fillRect(0, 0, W, H);
     // くも
-    cx.fillStyle = 'rgba(255,255,255,.85)';
+    cx.fillStyle = '#f4fbff';
     [[0.2, 0.58, 0.12], [0.78, 0.64, 0.09]].forEach(function (c) {
       var r = W * c[2], x = W * c[0], y = H * c[1];
-      cx.beginPath();
-      cx.ellipse(x, y, r, r * 0.4, 0, 0, Math.PI * 2);
-      cx.ellipse(x + r * 0.5, y - r * 0.18, r * 0.6, r * 0.38, 0, 0, Math.PI * 2);
-      cx.ellipse(x - r * 0.5, y - r * 0.1, r * 0.5, r * 0.3, 0, 0, Math.PI * 2);
-      cx.fill();
+      [[x, y, r, r * 0.4], [x + r * 0.5, y - r * 0.18, r * 0.6, r * 0.38], [x - r * 0.5, y - r * 0.1, r * 0.5, r * 0.3]]
+        .forEach(function (e) {
+          cx.beginPath();
+          cx.ellipse(e[0], e[1], e[2], e[3], 0, 0, Math.PI * 2);
+          cx.fill();
+        });
     });
     // 丘と地面
     cx.fillStyle = '#a6e6bf';
@@ -263,7 +264,7 @@
     cx.fillRect(0, 0, W, LEAFB - r * 0.35);
     for (x = -r * 0.3; x < W + r; x += r * 1.3) circle(x, LEAFB - r * 0.35, r, LEAF_DARK);
     for (x = r * 0.35; x < W + r; x += r * 1.3) circle(x, LEAFB - r * 0.75, r * 0.8, LEAF);
-    cx.fillStyle = LEAF; cx.fillRect(0, 0, W, LEAFB - r * 1.3);
+    cx.fillStyle = LEAF; cx.fillRect(0, 0, W, LEAFB - r * 0.9);
   }
 
   var PILE = [
