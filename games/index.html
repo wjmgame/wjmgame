@@ -1,0 +1,331 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<title>パズル</title>
+<meta name="game-title" content="パズル">
+<meta name="game-icon" content="🧩">
+<meta name="game-color" content="#8e7cff">
+<meta name="game-order" content="60">
+<script src="../../shared/common.js"></script>
+<style>
+:root{--sky:#8fd3f4;--coral:#ff7a6b;--sun:#ffc83d;--leaf:#4ccb8a;--grape:#8e7cff;--ink:#23305a}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%;overflow:hidden;background:var(--sky);color:var(--ink);
+  font-family:"Hiragino Maru Gothic ProN","Hiragino Sans",system-ui,sans-serif;
+  -webkit-user-select:none;user-select:none;touch-action:none;overscroll-behavior:none}
+#stage{position:fixed;inset:0;overflow:hidden}
+.tray{position:absolute;border-radius:18px;background:rgba(255,255,255,.28);display:none}
+#board{position:absolute;z-index:1;border-radius:6px;background:rgba(255,255,255,.55);
+  box-shadow:0 0 0 6px rgba(255,255,255,.85),0 4px 14px rgba(35,48,90,.25)}
+#hintimg{position:absolute;inset:0;background-size:100% 100%;opacity:.3;display:none}
+#board.hint #hintimg{display:block}
+#grid{position:absolute;inset:0;display:grid}
+#grid i{border:1px dashed rgba(35,48,90,.28)}
+.done #grid,.done #hintimg{display:none}
+.done #board{box-shadow:0 0 0 6px var(--sun),0 4px 18px rgba(35,48,90,.3)}
+.piece{position:absolute;z-index:10;border-radius:4px;background-repeat:no-repeat;touch-action:none;
+  box-shadow:0 2px 6px rgba(35,48,90,.35),inset 0 0 0 1.5px rgba(255,255,255,.85);cursor:grab}
+.piece.drag{transform:scale(1.06);box-shadow:0 8px 18px rgba(35,48,90,.4),inset 0 0 0 1.5px #fff;transition:none}
+.piece.snap{transition:left .12s ease-out,top .12s ease-out}
+.piece.locked{z-index:2;border-radius:0;pointer-events:none;box-shadow:inset 0 0 0 .5px rgba(255,255,255,.35)}
+.done .piece{box-shadow:none}
+#clear{position:fixed;inset:0;z-index:50;display:none;align-items:center;justify-content:center;flex-direction:column;
+  background:rgba(35,48,90,.35)}
+#clear.show{display:flex}
+#clear b{font-size:min(22vw,22vh);letter-spacing:.04em;color:#fff;
+  text-shadow:0 4px 0 var(--coral),0 8px 0 rgba(35,48,90,.35);animation:pop .5s cubic-bezier(.3,1.6,.5,1) both}
+#clear span{font-size:min(10vw,10vh);margin-top:.4em;animation:pop .5s .15s cubic-bezier(.3,1.6,.5,1) both}
+@keyframes pop{from{transform:scale(.2);opacity:0}to{transform:scale(1);opacity:1}}
+@media (prefers-reduced-motion:reduce){#clear b,#clear span{animation:none}}
+#panelwrap{position:fixed;inset:0;z-index:60;display:none;align-items:center;justify-content:center;background:rgba(35,48,90,.55)}
+#panelwrap.show{display:flex}
+#panel{background:#fff;border-radius:22px;padding:20px 22px;width:min(92vw,420px);max-height:94vh;overflow:auto;
+  box-shadow:0 10px 30px rgba(35,48,90,.4)}
+#panel h2{margin:0 0 14px;font-size:20px}
+.row{margin:0 0 14px}
+.row label{display:block;font-size:14px;margin:0 0 6px}
+.opts{display:flex;gap:8px}
+.opts button,#closeBtn{flex:1;min-height:52px;border:3px solid transparent;border-radius:14px;background:#eef1fb;
+  color:var(--ink);font:inherit;font-size:22px;font-weight:700;touch-action:manipulation}
+.opts button.on{background:var(--grape);color:#fff;border-color:var(--ink)}
+#closeBtn{width:100%;background:var(--leaf);color:var(--ink);font-size:20px;margin-top:4px}
+</style>
+</head>
+<body>
+<div id="stage">
+  <div class="tray"></div><div class="tray"></div><div class="tray"></div><div class="tray"></div>
+  <div id="board"><div id="hintimg"></div><div id="grid"></div></div>
+</div>
+<div id="clear"><b>CLEAR</b><span>⭐⭐⭐</span></div>
+<div id="panelwrap">
+  <div id="panel" role="dialog" aria-label="せってい">
+    <h2>設定</h2>
+    <div class="row"><label>縦分割</label><div class="opts" data-key="rows"></div></div>
+    <div class="row"><label>横分割</label><div class="opts" data-key="cols"></div></div>
+    <div class="row"><label>ヒント(薄い下絵)</label><div class="opts" data-key="hint"></div></div>
+    <button id="closeBtn" type="button">とじる</button>
+  </div>
+</div>
+<script>
+(() => {
+  const $ = id => document.getElementById(id);
+  const stage = $('stage'), board = $('board'), hintEl = $('hintimg'), grid = $('grid');
+  const clearEl = $('clear'), panelWrap = $('panelwrap');
+  const trayEls = [...document.querySelectorAll('.tray')];
+  const KEY = 'puzzle.settings';
+
+  let cfg = { rows: 3, cols: 3, hint: true };
+  try {
+    const s = JSON.parse(localStorage.getItem(KEY) || 'null');
+    if (s) {
+      if (s.rows >= 2 && s.rows <= 5) cfg.rows = s.rows | 0;
+      if (s.cols >= 2 && s.cols <= 5) cfg.cols = s.cols | 0;
+      cfg.hint = s.hint !== false;
+    }
+  } catch (e) {}
+  const save = () => { try { localStorage.setItem(KEY, JSON.stringify(cfg)); } catch (e) {} };
+
+  let list = [], lastUrl = '', cur = null;
+  let pieces = [], solved = 0, zTop = 10, token = 0, clearReady = false;
+  let W = 0, H = 0, portrait = true, M = null;
+
+  const rnd = n => Math.floor(Math.random() * n);
+  const shuffle = a => { for (let i = a.length - 1; i > 0; i--) { const j = rnd(i + 1); [a[i], a[j]] = [a[j], a[i]]; } return a; };
+  const safe = f => { try { f(); } catch (e) {} };
+
+  function fallbackImage() {
+    const c = document.createElement('canvas'); c.width = 640; c.height = 480;
+    const g = c.getContext('2d'), h = rnd(360);
+    const sky = g.createLinearGradient(0, 0, 0, 480);
+    sky.addColorStop(0, `hsl(${h},80%,78%)`); sky.addColorStop(1, `hsl(${(h + 40) % 360},85%,92%)`);
+    g.fillStyle = sky; g.fillRect(0, 0, 640, 480);
+    g.fillStyle = '#ffc83d'; g.beginPath(); g.arc(520, 100, 56, 0, 7); g.fill();
+    g.fillStyle = '#4ccb8a'; g.beginPath(); g.ellipse(160, 480, 300, 150, 0, 0, 7); g.fill();
+    g.fillStyle = '#35b576'; g.beginPath(); g.ellipse(480, 500, 300, 130, 0, 0, 7); g.fill();
+    for (let i = 0; i < 14; i++) {
+      g.fillStyle = `hsl(${rnd(360)},85%,62%)`;
+      g.beginPath(); g.arc(30 + rnd(580), 330 + rnd(130), 14 + rnd(10), 0, 7); g.fill();
+    }
+    return c.toDataURL('image/png');
+  }
+
+  async function loadList() {
+    try { const u = await Asobo.assets.urls('puzzle'); list = Array.isArray(u) ? u : []; }
+    catch (e) { list = []; }
+  }
+
+  function loadImg(url) {
+    return new Promise((res, rej) => {
+      const im = new Image();
+      im.onload = () => res({ url, ar: (im.naturalWidth || 4) / (im.naturalHeight || 3) });
+      im.onerror = rej;
+      im.src = url;
+    });
+  }
+
+  async function pickImage() {
+    const pool = list.filter(u => u !== lastUrl);
+    const c = pool.length ? pool : list;
+    if (c.length) {
+      const url = c[rnd(c.length)];
+      try { const info = await loadImg(url); lastUrl = url; return info; } catch (e) {}
+    }
+    return loadImg(fallbackImage());
+  }
+
+  function fit(bw, bh) {
+    let w, h;
+    if (bw / bh > cur.ar) { h = bh; w = h * cur.ar; } else { w = bw; h = w / cur.ar; }
+    const cw = Math.max(20, Math.floor(w / cfg.cols)), ch = Math.max(20, Math.floor(h / cfg.rows));
+    return { cw, ch, bw: cw * cfg.cols, bh: ch * cfg.rows };
+  }
+
+  function measure() {
+    W = window.innerWidth; H = window.innerHeight; portrait = H > W;
+    let box, trays;
+    if (portrait) {
+      const t = Math.round(H * 0.27);
+      box = { x: 12, y: t + 8, w: W - 24, h: H - 2 * t - 16 };
+      trays = [{ x: 8, y: 44, w: W - 16, h: t - 48 }, { x: 8, y: H - t + 4, w: W - 16, h: t - 16 }];
+    } else {
+      const sx = Math.round(W * 0.2), sy = Math.round(H * 0.17);
+      box = { x: sx, y: sy, w: W - 2 * sx, h: H - 2 * sy };
+      trays = [
+        { x: 8, y: 44, w: sx - 14, h: H - 52 },
+        { x: W - sx + 6, y: 44, w: sx - 14, h: H - 52 },
+        { x: sx, y: 8, w: W - 2 * sx, h: sy - 12 },
+        { x: sx, y: H - sy + 4, w: W - 2 * sx, h: sy - 12 }
+      ];
+    }
+    const f = fit(box.w - 16, box.h - 16);
+    M = Object.assign(f, {
+      bx: Math.round(box.x + (box.w - f.bw) / 2), by: Math.round(box.y + (box.h - f.bh) / 2), trays
+    });
+  }
+
+  function scatter(list_) {
+    const slots = [];
+    M.trays.forEach(r => {
+      if (r.w < 10 || r.h < 10) return;
+      const cols = Math.max(1, Math.floor(r.w / M.cw)), rows = Math.max(1, Math.floor(r.h / M.ch));
+      const sw = r.w / cols, sh = r.h / rows;
+      for (let i = 0; i < rows; i++) for (let j = 0; j < cols; j++) {
+        const jx = Math.max(0, sw - M.cw) * (Math.random() - .5), jy = Math.max(0, sh - M.ch) * (Math.random() - .5);
+        slots.push({ x: r.x + (j + .5) * sw - M.cw / 2 + jx, y: r.y + (i + .5) * sh - M.ch / 2 + jy });
+      }
+    });
+    shuffle(slots);
+    list_.forEach((p, i) => {
+      if (slots[i]) { p.x = slots[i].x; p.y = slots[i].y; return; }
+      const r = M.trays.filter(t => t.w > 10 && t.h > 10)[rnd(2)] || M.trays[0];
+      p.x = r.x + Math.random() * Math.max(0, r.w - M.cw);
+      p.y = r.y + Math.random() * Math.max(0, r.h - M.ch);
+    });
+  }
+
+  const clampX = x => Math.min(Math.max(0, x), Math.max(0, W - M.cw));
+  const clampY = y => Math.min(Math.max(0, y), Math.max(0, H - M.ch));
+
+  function place(p) { p.el.style.left = p.x + 'px'; p.el.style.top = p.y + 'px'; }
+
+  function applyLayout(rescatter) {
+    const oW = W, oH = H;
+    const np = window.innerHeight > window.innerWidth;
+    rescatter = rescatter || np !== portrait;
+    measure();
+    board.style.cssText = `left:${M.bx}px;top:${M.by}px;width:${M.bw}px;height:${M.bh}px`;
+    grid.style.gridTemplateColumns = `repeat(${cfg.cols},${M.cw}px)`;
+    grid.style.gridTemplateRows = `repeat(${cfg.rows},${M.ch}px)`;
+    hintEl.style.backgroundImage = `url("${cur.url}")`;
+    board.classList.toggle('hint', cfg.hint);
+    trayEls.forEach((el, i) => {
+      const r = M.trays[i];
+      if (!r) { el.style.display = 'none'; return; }
+      el.style.cssText = `display:block;left:${r.x}px;top:${r.y}px;width:${r.w}px;height:${r.h}px`;
+    });
+    pieces.forEach(p => {
+      const s = p.el.style;
+      s.width = M.cw + 'px'; s.height = M.ch + 'px';
+      s.backgroundSize = `${M.bw}px ${M.bh}px`;
+      s.backgroundPosition = `${-p.c * M.cw}px ${-p.r * M.ch}px`;
+      if (p.locked) { p.x = M.bx + p.c * M.cw; p.y = M.by + p.r * M.ch; }
+      else if (!rescatter && oW) { p.x = clampX(p.x * W / oW); p.y = clampY(p.y * H / oH); }
+    });
+    if (rescatter) scatter(pieces.filter(p => !p.locked));
+    pieces.forEach(place);
+  }
+
+  function makePieces() {
+    pieces.forEach(p => p.el.remove());
+    pieces = []; solved = 0;
+    grid.innerHTML = '<i></i>'.repeat(cfg.rows * cfg.cols);
+    for (let r = 0; r < cfg.rows; r++) for (let c = 0; c < cfg.cols; c++) {
+      const el = document.createElement('div');
+      el.className = 'piece';
+      el.style.backgroundImage = `url("${cur.url}")`;
+      stage.appendChild(el);
+      const p = { el, r, c, x: 0, y: 0, locked: false };
+      bindDrag(p);
+      pieces.push(p);
+    }
+  }
+
+  function bindDrag(p) {
+    const el = p.el; let dx = 0, dy = 0, id = null;
+    el.addEventListener('pointerdown', e => {
+      if (p.locked || id !== null || clearEl.classList.contains('show') || panelWrap.classList.contains('show')) return;
+      id = e.pointerId; el.setPointerCapture(id);
+      dx = e.clientX - p.x; dy = e.clientY - p.y;
+      el.classList.remove('snap'); el.classList.add('drag');
+      el.style.zIndex = ++zTop;
+      e.preventDefault();
+    });
+    el.addEventListener('pointermove', e => {
+      if (e.pointerId !== id) return;
+      p.x = clampX(e.clientX - dx); p.y = clampY(e.clientY - dy); place(p);
+    });
+    const end = e => {
+      if (e.pointerId !== id) return;
+      id = null; el.classList.remove('drag');
+      const tx = M.bx + p.c * M.cw, ty = M.by + p.r * M.ch;
+      if (Math.hypot(p.x - tx, p.y - ty) < Math.min(M.cw, M.ch) * 0.55) {
+        p.x = tx; p.y = ty; p.locked = true;
+        el.classList.add('snap', 'locked'); place(p);
+        solved++;
+        safe(() => Asobo.pop());
+        if (solved === pieces.length) finish();
+      }
+    };
+    el.addEventListener('pointerup', end);
+    el.addEventListener('pointercancel', end);
+  }
+
+  function finish() {
+    stage.classList.add('done');
+    [523, 659, 784, 1047].forEach((f, i) => setTimeout(() => safe(() => Asobo.tone(f, .28, .2, 1)), i * 140));
+    setTimeout(() => {
+      clearEl.classList.add('show'); clearReady = false;
+      setTimeout(() => { clearReady = true; }, 600);
+    }, 700);
+  }
+
+  async function startRound(same) {
+    const t = ++token;
+    clearEl.classList.remove('show'); stage.classList.remove('done');
+    if (!same || !cur) {
+      const info = await pickImage();
+      if (t !== token) return;
+      cur = info;
+    }
+    makePieces();
+    applyLayout(true);
+  }
+
+  clearEl.addEventListener('pointerdown', e => {
+    if (!clearReady) return;
+    clearReady = false; e.preventDefault(); startRound(false);
+  });
+
+  let resizeTimer = 0;
+  const onResize = () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(() => { if (cur) applyLayout(false); }, 80); };
+  window.addEventListener('resize', onResize);
+  window.addEventListener('orientationchange', onResize);
+
+  function renderOpts() {
+    panelWrap.querySelectorAll('.opts').forEach(box => {
+      const key = box.dataset.key;
+      const vals = key === 'hint' ? [[true, 'あり'], [false, 'なし']] : [2, 3, 4, 5].map(n => [n, String(n)]);
+      box.innerHTML = '';
+      vals.forEach(([v, label]) => {
+        const b = document.createElement('button');
+        b.type = 'button'; b.textContent = label;
+        if (cfg[key] === v) b.classList.add('on');
+        b.addEventListener('click', () => { cfg[key] = v; save(); renderOpts(); });
+        box.appendChild(b);
+      });
+    });
+  }
+
+  let before = null;
+  function openSettings() {
+    if (panelWrap.classList.contains('show')) return;
+    before = { rows: cfg.rows, cols: cfg.cols };
+    renderOpts(); panelWrap.classList.add('show');
+  }
+  $('closeBtn').addEventListener('click', () => {
+    panelWrap.classList.remove('show');
+    if (!before) return;
+    if (before.rows !== cfg.rows || before.cols !== cfg.cols) startRound(true);
+    else if (cur) board.classList.toggle('hint', cfg.hint);
+    before = null;
+  });
+
+  Asobo.cornerButton({ corner: 'top-left', icon: '⚙️', label: '設定', onHold: openSettings });
+
+  loadList().then(() => startRound(false));
+})();
+</script>
+</body>
+</html>
