@@ -4,12 +4,13 @@
 公開用サイト(_site/)を、GitHub Pages と同じ `/wjmgame/` のサブパスで配信して、ヘッドレス Chrome で動かす。
  - トップ: タイルの数が games.json と一致する / JSエラー・通信エラーがない
  - 各ゲーム: 開いて数回タップしても、JSエラー・通信エラーがない / Asobo(common.js)が読み込まれている / 顔写真が読み込める
- - 保護者ゲート: 右上を1.5秒長押しでトップへ戻る
+ - 画面の隅のボタン: 右上の薄いボタンが表示される / 右上の長押しでトップへ戻る / ぞろぞろは左上の長押しで設定が開く
+ - 素材フォルダ: assets/*/list.json の画像がすべて読み込める(順番は毎回ランダム)
  - ミュート: トップの設定がゲームに反映される
  - 自動更新・オフライン: サービスワーカーが全ファイルを保存し、通信なしでもトップとゲームが開く
 失敗したテストは1回だけやり直し、それでも失敗なら終了コード1にする。オン・オフは scripts/checks.json。
 """
-import functools, http.server, json, os, subprocess, sys, tempfile, threading
+import functools, glob, http.server, json, os, re, subprocess, sys, tempfile, threading
 from urllib.parse import quote
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -75,6 +76,7 @@ def t_top():
     page = new_page(errs)
     page.goto(base)
     wait_tiles(page)
+    assert page.evaluate("!!document.querySelector('[data-asobo-corner=\"right\"]')"), "右上の保護者メニューのボタンがありません"
     page.wait_for_timeout(500)
     page.close()
     no_errors(errs)
@@ -88,6 +90,7 @@ def t_game(href):
         page.wait_for_timeout(1200)
         assert page.evaluate("typeof window.Asobo") == "object", "Asobo(common.js)が読み込まれていません"
         assert page.evaluate("Asobo.url('assets/')").endswith(f"/{PREFIX}/assets/"), "ルートの位置が正しく取れていません"
+        assert page.evaluate("!!document.querySelector('[data-asobo-corner=\"right\"]')"), "右上の戻るボタンがありません"
         for x, y in [(195, 420), (100, 300), (300, 600), (195, 700)]:
             page.mouse.click(x, y)
             page.wait_for_timeout(150)
@@ -162,6 +165,49 @@ def t_offline():
         page.close()
 
 
+def t_assets():
+    folders = []
+    for lst in sorted(glob.glob(os.path.join(SITE, "assets/*/list.json"))):
+        names = [n for n in json.load(open(lst, encoding="utf-8")) if re.search(r"\.(jpe?g|png|webp|gif|avif)$", n, re.I)]
+        if names:
+            folders.append((os.path.basename(os.path.dirname(lst)), len(names)))
+    errs = []
+    page = new_page(errs)
+    page.goto(base)
+    page.wait_for_timeout(300)
+    for folder, n in folders:
+        got, ok = page.evaluate("""async (f) => {
+            const u = await Asobo.assets.urls(f);
+            const ok = await Promise.all(u.map((x) => fetch(x).then((r) => r.ok)));
+            return [u.length, ok.every(Boolean)];
+        }""", folder)
+        assert got == n and ok, f"assets/{folder}: 一覧 {n} 枚のうち {got} 枚を取得(すべて読み込めるか: {ok})"
+    page.close()
+    no_errors(errs)
+
+
+def t_settings(href):
+    def run():
+        errs = []
+        page = new_page(errs)
+        page.goto(base + href, wait_until="load")
+        page.wait_for_timeout(800)
+        assert page.evaluate("!!document.querySelector('[data-asobo-corner=\"left\"]')"), "左上の設定ボタンがありません"
+        page.mouse.move(28, 28)
+        page.mouse.down()
+        page.wait_for_timeout(1800)
+        try:
+            opened = page.evaluate("!document.getElementById('panel').hidden")
+        finally:
+            try:
+                page.mouse.up()
+            except Exception:
+                pass
+        page.close()
+        assert opened, "左上の長押しで設定が開きません"
+    return run
+
+
 def run(name, fn):
     last = ""
     for attempt in (1, 2):
@@ -194,6 +240,10 @@ def main():
             run(f"ゲーム: {g['title']}", t_game(g["href"]))
         run("保護者ゲート(右上の長押しでトップへ)", t_gate)
         run("ミュート設定の引き継ぎ", t_mute)
+        run("素材フォルダの読み込み", t_assets)
+        for g in games:
+            if g["id"] == "zorozoro":
+                run("設定ボタン(ぞろぞろ・左上の長押し)", t_settings(g["href"]))
         run("自動更新の先読みとオフライン起動", t_offline)
         browser.close()
     srv.shutdown()
