@@ -322,7 +322,7 @@ html,body{margin:0;height:100%;overflow:hidden;background:var(--sky);color:var(-
     before = null;
   });
 
-  Asobo.cornerButton({ corner: 'top-left', icon: '⚙️', label: '設定', onHold: openSettings });
+  if (window.Asobo && Asobo.cornerButton) Asobo.cornerButton({ corner: 'left', icon: '⚙️', label: '設定（長押し）', onHold: openSettings });
 
   loadList().then(() => startRound(false));
 })();
