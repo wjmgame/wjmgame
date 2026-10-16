@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<title>可愛いさなちゃん</title>
+<meta name="game-title" content="可愛いさなちゃん">
+<meta name="game-icon" content="🃏">
+<meta name="game-color" content="#8e7cff">
+<meta name="game-order" content="50">
+<script src="../../shared/common.js"></script>
+<style>
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;height:100%;overflow:hidden;background:#8fd3f4;color:#23305a;
+    font-family:-apple-system,"Hiragino Maru Gothic ProN","Hiragino Sans",sans-serif;
+    touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none}
+  #board{position:fixed;inset:0;display:flex;align-items:center;justify-content:center}
+  #grid{display:grid;grid-template-columns:repeat(2,var(--s));grid-template-rows:repeat(2,var(--s));
+    gap:calc(var(--s) * .08);--s:min(43vw,34vh)}
+  .card{width:var(--s);height:var(--s);perspective:800px;cursor:pointer}
+  .inner{position:relative;width:100%;height:100%;transition:transform .45s;transform-style:preserve-3d}
+  .card.flip .inner{transform:rotateY(180deg)}
+  .face,.back{position:absolute;inset:0;border-radius:18%;backface-visibility:hidden;-webkit-backface-visibility:hidden;
+    overflow:hidden;box-shadow:0 .6vmin 0 rgba(35,48,90,.25);display:flex;align-items:center;justify-content:center}
+  .back{background:#8e7cff;border:calc(var(--s) * .04) solid #fff;font-size:calc(var(--s) * .45);color:#fff}
+  .face{background:#fff;transform:rotateY(180deg);border:calc(var(--s) * .04) solid #fff;font-size:calc(var(--s) * .6)}
+  .face img,#big img{width:100%;height:100%;object-fit:cover;display:block;pointer-events:none}
+  #big{position:fixed;inset:0;display:none;align-items:center;justify-content:center;
+    background:rgba(35,48,90,.45)}
+  #big.show{display:flex}
+  #bigcard{width:min(90vw,78vh);height:min(90vw,78vh);border-radius:8%;overflow:hidden;background:#fff;
+    border:min(2.4vw,2.4vh) solid #fff;box-shadow:0 1.2vmin 0 rgba(35,48,90,.3);
+    display:flex;align-items:center;justify-content:center;font-size:min(50vw,44vh);
+    animation:pop .55s cubic-bezier(.2,1.4,.4,1)}
+  @keyframes pop{from{transform:scale(.2) rotate(-8deg);opacity:0}to{transform:scale(1) rotate(0);opacity:1}}
+</style>
+</head>
+<body>
+<div id="board"><div id="grid"></div></div>
+<div id="big"><div id="bigcard"></div></div>
+<script>
+(function(){
+  var EMOJI = ["🐶","🐱","🐰","🐻","🐼"];
+  var grid = document.getElementById("grid");
+  var big = document.getElementById("big");
+  var bigcard = document.getElementById("bigcard");
+  var cards = [], photos = [];
+  var state = "play";   // play(めくり中) / wait(5枚目待ち) / big(5枚目表示中) / busy(リセット中)
+  var flipped = 0;
+
+  function snd(f, d){ try{ Asobo.tone(f, d, 0.2, 1); }catch(e){} }
+  function shuffle(a){
+    a = a.slice();
+    for(var i = a.length - 1; i > 0; i--){
+      var j = Math.floor(Math.random() * (i + 1)), t = a[i]; a[i] = a[j]; a[j] = t;
+    }
+    return a;
+  }
+
+  // 写真の一覧を読み込む(assets/photos/list.json は build.py が自動生成)
+  function loadList(){
+    return fetch(Asobo.url("assets/photos/list.json"), {cache:"no-cache"})
+      .then(function(r){ return r.ok ? r.json() : []; })
+      .then(function(a){
+        return (a || []).filter(function(n){ return /\.(jpe?g|png|webp|gif|avif)$/i.test(n); })
+          .map(function(n){ return {t:"img", v:Asobo.url("assets/photos/" + encodeURIComponent(n))}; });
+      })
+      .catch(function(){ return []; });
+  }
+
+  // 重複なしで5件選ぶ(写真が5枚未満のときだけ重複を許す)
+  function pickFive(){
+    var pool = photos.length ? photos : EMOJI.map(function(e){ return {t:"emoji", v:e}; });
+    var s = shuffle(pool), out = [];
+    for(var i = 0; i < 5; i++) out.push(s[i % s.length]);
+    return out;
+  }
+
+  function fill(el, item){
+    el.innerHTML = "";
+    if(item.t === "img"){
+      var im = new Image();
+      im.draggable = false;
+      im.src = item.v;
+      el.appendChild(im);
+    }else{
+      el.textContent = item.v;
+    }
+  }
+
+  function build(){
+    for(var i = 0; i < 4; i++){
+      var c = document.createElement("div");
+      c.className = "card";
+      c.innerHTML = '<div class="inner"><div class="back">★</div><div class="face"></div></div>';
+      grid.appendChild(c);
+      cards.push(c);
+    }
+  }
+
+  function deal(){
+    var five = pickFive();
+    cards.forEach(function(c, i){ fill(c.querySelector(".face"), five[i]); });
+    fill(bigcard, five[4]);
+  }
+
+  function flip(c){
+    c.classList.add("flip");
+    flipped++;
+    snd(440 + flipped * 110, 0.16);
+    if(flipped === 4){
+      state = "wait";
+      setTimeout(showBig, 1000);
+    }
+  }
+
+  function showBig(){
+    big.classList.add("show");
+    [523, 659, 784, 1047].forEach(function(f, i){ setTimeout(function(){ snd(f, 0.25); }, i * 110); });
+    state = "big";
+  }
+
+  function reset(){
+    state = "busy";
+    big.classList.remove("show");
+    cards.forEach(function(c){ c.classList.remove("flip"); });
+    flipped = 0;
+    snd(330, 0.15);
+    setTimeout(function(){ deal(); state = "play"; }, 500);
+  }
+
+  document.addEventListener("pointerdown", function(e){
+    if(state === "big"){ reset(); return; }
+    if(state !== "play") return;
+    var c = e.target.closest ? e.target.closest(".card") : null;
+    if(!c || c.classList.contains("flip")){
+      var rest = cards.filter(function(x){ return !x.classList.contains("flip"); });
+      if(!rest.length) return;
+      c = rest[Math.floor(Math.random() * rest.length)];
+    }
+    flip(c);
+  });
+
+  build();
+  loadList().then(function(list){ photos = list; deal(); });
+})();
+</script>
+</body>
+</html>
