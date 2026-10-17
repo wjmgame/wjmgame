@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>かぼちゃランタン</title>
+<meta name="game-title" content="かぼちゃランタン">
+<meta name="game-icon" content="🎃">
+<meta name="game-color" content="#ff8a3d">
+<meta name="game-order" content="90">
+<script src="../../shared/common.js"></script>
+<script src="../../shared/faces.js"></script>
+<style>
+  html, body {
+    margin: 0; height: 100%; overflow: hidden;
+    background: linear-gradient(#0e1a3d, #1b2a5e 62%, #2d2f6e);
+    -webkit-user-select: none; user-select: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+  #stage { position: fixed; inset: 0; touch-action: none; overflow: hidden; }
+
+  /* 夜空 */
+  .stars { position: absolute; border-radius: 50%; pointer-events: none; }
+  .stars.big { animation: twinkle 4s ease-in-out infinite alternate; }
+  @keyframes twinkle { from { opacity: .5; } to { opacity: 1; } }
+  .moon {
+    position: absolute; left: 8%; top: 7%; width: 15vmin; height: 15vmin;
+    border-radius: 50%; pointer-events: none;
+    background:
+      radial-gradient(circle at 34% 38%, #e8d9a0 0 9%, transparent 10%),
+      radial-gradient(circle at 64% 60%, #e8d9a0 0 12%, transparent 13%),
+      radial-gradient(circle at 58% 26%, #e8d9a0 0 6%, transparent 7%),
+      #fff3c4;
+    box-shadow: 0 0 5vmin rgba(255, 243, 196, .55);
+  }
+
+  /* かぼちゃ */
+  .pk {
+    position: absolute; transform-origin: 50% 60%;
+    filter: drop-shadow(0 0 16px rgba(255, 190, 50, .85)) brightness(1);
+    transition: filter .45s;
+    animation: pop .45s ease-out;
+  }
+  .pk:not(.lit) { filter: drop-shadow(0 0 0 rgba(255, 190, 50, 0)) brightness(.5) saturate(.85); }
+  .pk svg { display: block; width: 100%; height: auto; }
+  .pk .carve { fill: #3b1703; opacity: 1; transition: opacity .3s, fill .3s; }
+  .pk.lit .carve { opacity: 0; }
+  .pk.lit.nophoto .carve { opacity: 1; fill: #ffe27a; }
+  .pk .photo {
+    position: absolute; left: 50%; top: 58%; width: 54%; aspect-ratio: 1;
+    transform: translate(-50%, -50%); border-radius: 50%; overflow: hidden;
+    border: .35em solid #ffd966; box-sizing: border-box;
+    box-shadow: 0 0 14px #ffd966; background: #ffe9a8;
+    opacity: 0; transition: opacity .3s;
+  }
+  .pk.lit .photo { opacity: 1; }
+  .pk.nophoto .photo { display: none; }
+  .pk .photo img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .pk.wob { animation: wob .35s ease-out; }
+  .pk.bye { animation: bye .4s ease-in forwards; pointer-events: none; }
+  @keyframes pop {
+    0% { transform: scale(0) rotate(-12deg); }
+    60% { transform: scale(1.12) rotate(4deg); }
+    100% { transform: scale(1) rotate(0); }
+  }
+  @keyframes wob {
+    0% { transform: scale(1); } 35% { transform: scale(1.08) rotate(-4deg); }
+    70% { transform: scale(.97) rotate(3deg); } 100% { transform: scale(1); }
+  }
+  @keyframes bye { to { transform: scale(.4); opacity: 0; } }
+  @media (prefers-reduced-motion: reduce) {
+    .pk, .pk.wob, .stars.big { animation: none; }
+    .pk.bye { animation: none; opacity: 0; }
+  }
+</style>
+</head>
+<body>
+<div id="stage"></div>
+<script>
+(function () {
+  var MAX = 20;
+  var stage = document.getElementById('stage');
+  var list = [];
+  var pool = [], idx = 0;
+
+  // 夜空: 星と月
+  function makeStars(n, size, cls) {
+    var s = [];
+    for (var i = 0; i < n; i++) {
+      s.push((Math.random() * 100).toFixed(1) + 'vw ' + (Math.random() * 100).toFixed(1) + 'vh 0 #fff');
+    }
+    var d = document.createElement('div');
+    d.className = 'stars ' + cls;
+    d.style.cssText = 'left:0;top:0;width:' + size + 'px;height:' + size + 'px;box-shadow:' + s.join(',');
+    stage.appendChild(d);
+  }
+  makeStars(60, 2, 'small');
+  makeStars(18, 4, 'big');
+  var moon = document.createElement('div');
+  moon.className = 'moon';
+  stage.appendChild(moon);
+
+  // 顔写真(毎回ランダム。一巡するたびに並べ直す)
+  function shuffle(a) {
+    for (var i = a.length - 1; i > 0; i--) {
+      var j = Math.floor(Math.random() * (i + 1));
+      var t = a[i]; a[i] = a[j]; a[j] = t;
+    }
+    return a;
+  }
+  try {
+    Promise.resolve(Asobo.faces.urls(30)).then(function (a) {
+      pool = Array.isArray(a) ? a.slice() : [];
+    }).catch(function () {});
+  } catch (e) {}
+  function nextFace() {
+    if (!pool.length) return null;
+    if (idx >= pool.length) { shuffle(pool); idx = 0; }
+    return pool[idx++];
+  }
+
+  // 音(ミュートは common.js が扱う)
+  function sound(fn) { try { fn(); } catch (e) {} }
+
+  var SVG =
+    '<svg viewBox="0 0 200 180" aria-hidden="true">' +
+    '<path d="M92 36 C92 20 98 12 108 8 L116 16 C110 20 108 28 110 36Z" fill="#5a7a2a"/>' +
+    '<g stroke="#c24f08" stroke-width="2">' +
+    '<ellipse cx="52" cy="104" rx="46" ry="66" fill="#e8650a"/>' +
+    '<ellipse cx="148" cy="104" rx="46" ry="66" fill="#e8650a"/>' +
+    '<ellipse cx="76" cy="104" rx="50" ry="70" fill="#f77f12"/>' +
+    '<ellipse cx="124" cy="104" rx="50" ry="70" fill="#f77f12"/>' +
+    '<ellipse cx="100" cy="104" rx="46" ry="72" fill="#ff9a2e"/></g>' +
+    '<g class="carve">' +
+    '<path d="M60 92 L86 92 L73 66Z"/><path d="M114 92 L140 92 L127 66Z"/>' +
+    '<path d="M100 102 L92 116 L108 116Z"/>' +
+    '<path d="M56 124 L72 134 L84 124 L100 138 L116 124 L128 134 L144 124 L138 150 Q100 166 62 150Z"/>' +
+    '</g></svg>';
+
+  function size() {
+    var m = Math.min(innerWidth, innerHeight);
+    return Math.round(Math.min(Math.max(m * 0.3, 130), 220));
+  }
+
+  function spawn(x, y) {
+    var S = size(), H = S * 0.9;
+    x = Math.min(Math.max(x, S / 2), innerWidth - S / 2);
+    y = Math.min(Math.max(y, H / 2), innerHeight - H / 2);
+    var el = document.createElement('div');
+    el.className = 'pk lit';
+    el.style.cssText = 'width:' + S + 'px;font-size:' + S + 'px;left:' + (x - S / 2) + 'px;top:' + (y - H / 2) + 'px';
+    el.innerHTML = SVG + '<div class="photo"></div>';
+    var url = nextFace();
+    if (url) {
+      var img = new Image();
+      img.alt = '';
+      img.draggable = false;
+      img.onerror = function () { el.classList.add('nophoto'); };
+      img.src = url;
+      el.querySelector('.photo').appendChild(img);
+    } else {
+      el.classList.add('nophoto');
+    }
+    el.addEventListener('animationend', function () { el.classList.remove('wob'); });
+    stage.appendChild(el);
+    list.push(el);
+    if (list.length > MAX) {
+      var old = list.shift();
+      old.classList.add('bye');
+      setTimeout(function () { old.remove(); }, 400);
+    }
+    sound(function () { Asobo.pop(); });
+  }
+
+  function toggle(el) {
+    var on = el.classList.toggle('lit');
+    el.classList.remove('wob');
+    void el.offsetWidth;
+    el.classList.add('wob');
+    if (on) sound(function () { Asobo.tone(520, 0.12, 0.1, 1.6); });
+    else sound(function () { Asobo.tone(260, 0.2, 0.1, 0.4); });
+  }
+
+  stage.addEventListener('pointerdown', function (e) {
+    e.preventDefault();
+    var pk = e.target.closest ? e.target.closest('.pk') : null;
+    if (pk && !pk.classList.contains('bye')) toggle(pk);
+    else spawn(e.clientX, e.clientY);
+  });
+})();
+</script>
+</body>
+</html>
