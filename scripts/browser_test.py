@@ -5,12 +5,13 @@
  - トップ: タイルの数が games.json と一致する / JSエラー・通信エラーがない
  - 各ゲーム: 開いて数回タップしても、JSエラー・通信エラーがない / Asobo(common.js)が読み込まれている / 顔写真が読み込める
  - 画面の隅のボタン: 右上の薄いボタンが表示される / 右上の長押しでトップへ戻る / ぞろぞろは左上の長押しで設定が開く
+ - ゲームが増えたとき: 9個までは、スクロールしなくても全タイルが見える。20個でも、縦・横どちらの向きでも全タイルに届く(タッチでスクロール)。タイルは100px以上
  - 素材フォルダ: assets/*/list.json の画像がすべて読み込める(順番は毎回ランダム)
  - ミュート: トップの設定がゲームに反映される
  - 自動更新・オフライン: サービスワーカーが全ファイルを保存し、通信なしでもトップとゲームが開く
 失敗したテストは1回だけやり直し、それでも失敗なら終了コード1にする。オン・オフは scripts/checks.json。
 """
-import functools, glob, http.server, json, os, re, subprocess, sys, tempfile, threading
+import functools, glob, http.server, json, os, re, shutil, subprocess, sys, tempfile, threading
 from urllib.parse import quote
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -18,7 +19,7 @@ os.chdir(ROOT)
 SITE = os.path.abspath("_site")
 PREFIX = "wjmgame"  # GitHub Pages のサブパスを再現する
 VIEWPORT = {"width": 390, "height": 844}
-ctx = base = games = None
+ctx = base = games = browser = None
 results = []
 
 
@@ -27,12 +28,28 @@ class Quiet(http.server.SimpleHTTPRequestHandler):
         pass
 
 
-def serve():
+def serve(site=None):
     tmp = tempfile.mkdtemp()
-    os.symlink(SITE, os.path.join(tmp, PREFIX))
+    os.symlink(site or SITE, os.path.join(tmp, PREFIX))
     srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), functools.partial(Quiet, directory=tmp))
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     return srv, f"http://127.0.0.1:{srv.server_address[1]}/{PREFIX}/"
+
+
+def make_many_site(n):
+    """今のサイトを複製し、既存ゲームのコピーでゲームを n 個に増やした試験用サイトを作る"""
+    site = os.path.join(tempfile.mkdtemp(), "site")
+    shutil.copytree(SITE, site)
+    data = json.load(open(os.path.join(site, "games.json"), encoding="utf-8"))
+    base_games = data["games"][:]
+    while len(data["games"]) < n:
+        k = len(data["games"]) + 1
+        src = base_games[(k - 1) % len(base_games)]
+        shutil.copytree(os.path.join(site, src["href"]), os.path.join(site, f"games/dummy{k}"))
+        data["games"].append({**src, "id": f"dummy{k}", "title": f"ゲーム{k}", "href": f"games/dummy{k}/", "order": 100 + k})
+    data["games"] = data["games"][:n]
+    json.dump(data, open(os.path.join(site, "games.json"), "w", encoding="utf-8"), ensure_ascii=False)
+    return site
 
 
 def launch(p):
@@ -208,6 +225,47 @@ def t_settings(href):
     return run
 
 
+def swipe_up(page, cdp, x, y_from, y_to, step=20):
+    """タッチイベントを1つずつ送って、指で上へスワイプする(synthesizeScrollGesture は環境によって効かない)"""
+    cdp.send("Input.dispatchTouchEvent", {"type": "touchStart", "touchPoints": [{"x": x, "y": y_from}]})
+    y = y_from
+    while y > y_to:
+        y = max(y - step, y_to)
+        cdp.send("Input.dispatchTouchEvent", {"type": "touchMove", "touchPoints": [{"x": x, "y": y}]})
+        page.wait_for_timeout(16)
+    cdp.send("Input.dispatchTouchEvent", {"type": "touchEnd", "touchPoints": []})
+    page.wait_for_timeout(400)
+
+
+def t_many_games():
+    last_visible = """(() => { const t = [...document.querySelectorAll('.tile')].pop().getBoundingClientRect();
+        return t.bottom <= innerHeight + 1 && t.top >= 0; })()"""
+    for n in (9, 20):
+        srv, url = serve(make_many_site(n))
+        try:
+            for vp in ({"width": 390, "height": 844}, {"width": 844, "height": 390}):
+                c = browser.new_context(viewport=vp, has_touch=True, is_mobile=True)
+                page = c.new_page()
+                page.set_default_timeout(10000)
+                page.goto(url)
+                page.wait_for_function("n => document.querySelectorAll('.tile').length === n", arg=n)
+                page.wait_for_timeout(300)
+                cdp = c.new_cdp_session(page)
+                label = f"{n}個・{vp['width']}x{vp['height']}"
+                if n == 9:  # 9個までは、スクロールしなくても全部のタイルが見える(スクロールに気づかなくても選べる)
+                    assert page.evaluate(last_visible), f"{label}: スクロールしないと最後のタイルが見えません"
+                for _ in range(8):  # 最後のタイルが見えるまで、指で上へスワイプ(スクロール)する
+                    if page.evaluate(last_visible):
+                        break
+                    swipe_up(page, cdp, vp["width"] // 2, int(vp["height"] * 0.8), int(vp["height"] * 0.3))
+                assert page.evaluate(last_visible), f"{label}: 最後のタイルに届きません(スクロールできない可能性)"
+                side = page.evaluate("Math.min(...[...document.querySelectorAll('.tile')].map((t) => { const r = t.getBoundingClientRect(); return Math.min(r.width, r.height); }))")
+                assert side >= 100, f"{label}: タイルが小さすぎます({side:.0f}px)"
+                c.close()
+        finally:
+            srv.shutdown()
+
+
 def run(name, fn):
     last = ""
     for attempt in (1, 2):
@@ -226,7 +284,7 @@ def run(name, fn):
 
 
 def main():
-    global ctx, base, games
+    global ctx, base, games, browser
     if not os.path.isdir(SITE):
         sys.exit("_site/ がありません。先に python3 scripts/build.py を実行してください")
     from playwright.sync_api import sync_playwright
@@ -240,6 +298,7 @@ def main():
             run(f"ゲーム: {g['title']}", t_game(g["href"]))
         run("保護者ゲート(右上の長押しでトップへ)", t_gate)
         run("ミュート設定の引き継ぎ", t_mute)
+        run("ゲームが増えても全タイルに届く(9個・20個)", t_many_games)
         run("素材フォルダの読み込み", t_assets)
         for g in games:
             if g["id"] == "zorozoro":
