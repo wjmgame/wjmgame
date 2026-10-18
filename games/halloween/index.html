@@ -9,7 +9,6 @@
 <meta name="game-color" content="#ff8a3d">
 <meta name="game-order" content="90">
 <script src="../../shared/common.js"></script>
-<script src="../../shared/faces.js"></script>
 <style>
   html, body {
     margin: 0; height: 100%; overflow: hidden;
@@ -49,7 +48,7 @@
   .pk .photo {
     position: absolute; left: 50%; top: 58%; width: 54%; aspect-ratio: 1;
     transform: translate(-50%, -50%); border-radius: 50%; overflow: hidden;
-    border: .35em solid #ffd966; box-sizing: border-box;
+    border: 4px solid #ffd966; box-sizing: border-box;
     box-shadow: 0 0 14px #ffd966; background: #ffe9a8;
     opacity: 0; transition: opacity .3s;
   }
@@ -100,7 +99,7 @@
   moon.className = 'moon';
   stage.appendChild(moon);
 
-  // 顔写真(毎回ランダム。一巡するたびに並べ直す)
+  // 顔写真(assets/halloween から。毎回ランダム。一巡するたびに並べ直す)
   function shuffle(a) {
     for (var i = a.length - 1; i > 0; i--) {
       var j = Math.floor(Math.random() * (i + 1));
@@ -109,7 +108,7 @@
     return a;
   }
   try {
-    Promise.resolve(Asobo.faces.urls(30)).then(function (a) {
+    Promise.resolve(Asobo.assets.urls('halloween', {max: 30})).then(function (a) {
       pool = Array.isArray(a) ? a.slice() : [];
     }).catch(function () {});
   } catch (e) {}
@@ -148,7 +147,7 @@
     y = Math.min(Math.max(y, H / 2), innerHeight - H / 2);
     var el = document.createElement('div');
     el.className = 'pk lit';
-    el.style.cssText = 'width:' + S + 'px;font-size:' + S + 'px;left:' + (x - S / 2) + 'px;top:' + (y - H / 2) + 'px';
+    el.style.cssText = 'width:' + S + 'px;left:' + (x - S / 2) + 'px;top:' + (y - H / 2) + 'px';
     el.innerHTML = SVG + '<div class="photo"></div>';
     var url = nextFace();
     if (url) {
