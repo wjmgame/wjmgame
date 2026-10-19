@@ -38,7 +38,6 @@
     position: absolute; transform-origin: 50% 60%;
     filter: drop-shadow(0 0 16px rgba(255, 190, 50, .85)) brightness(1);
     transition: filter .45s;
-    animation: pop .45s ease-out;
   }
   .pk:not(.lit) { filter: drop-shadow(0 0 0 rgba(255, 190, 50, 0)) brightness(.5) saturate(.85); }
   .pk svg { display: block; width: 100%; height: auto; }
@@ -55,6 +54,7 @@
   .pk.lit .photo { opacity: 1; }
   .pk.nophoto .photo { display: none; }
   .pk .photo img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .pk.born { animation: pop .45s ease-out; }
   .pk.wob { animation: wob .35s ease-out; }
   .pk.bye { animation: bye .4s ease-in forwards; pointer-events: none; }
   @keyframes pop {
@@ -68,7 +68,7 @@
   }
   @keyframes bye { to { transform: scale(.4); opacity: 0; } }
   @media (prefers-reduced-motion: reduce) {
-    .pk, .pk.wob, .stars.big { animation: none; }
+    .pk.born, .pk.wob, .stars.big { animation: none; }
     .pk.bye { animation: none; opacity: 0; }
   }
 </style>
@@ -146,7 +146,7 @@
     x = Math.min(Math.max(x, S / 2), innerWidth - S / 2);
     y = Math.min(Math.max(y, H / 2), innerHeight - H / 2);
     var el = document.createElement('div');
-    el.className = 'pk lit';
+    el.className = 'pk lit born';
     el.style.cssText = 'width:' + S + 'px;left:' + (x - S / 2) + 'px;top:' + (y - H / 2) + 'px';
     el.innerHTML = SVG + '<div class="photo"></div>';
     var url = nextFace();
@@ -160,7 +160,7 @@
     } else {
       el.classList.add('nophoto');
     }
-    el.addEventListener('animationend', function () { el.classList.remove('wob'); });
+    el.addEventListener('animationend', function () { el.classList.remove('born', 'wob'); });
     stage.appendChild(el);
     list.push(el);
     if (list.length > MAX) {
