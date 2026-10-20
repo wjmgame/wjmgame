@@ -47,10 +47,12 @@ html,body{margin:0;height:100%;overflow:hidden;background:var(--sky);color:var(-
 .row{margin:0 0 14px}
 .row label{display:block;font-size:14px;margin:0 0 6px}
 .opts{display:flex;gap:8px}
-.opts button,#closeBtn{flex:1;min-height:52px;border:3px solid transparent;border-radius:14px;background:#eef1fb;
+.opts button,#closeBtn,#refreshBtn{flex:1;min-height:52px;border:3px solid transparent;border-radius:14px;background:#eef1fb;
   color:var(--ink);font:inherit;font-size:22px;font-weight:700;touch-action:manipulation}
 .opts button.on{background:var(--grape);color:#fff;border-color:var(--ink)}
-#closeBtn{width:100%;background:var(--leaf);color:var(--ink);font-size:20px;margin-top:4px}
+#closeBtn,#refreshBtn{width:100%;font-size:20px}
+#closeBtn{background:var(--leaf);color:var(--ink);margin-top:4px}
+#refreshBtn{flex:none;background:var(--sun);color:var(--ink);margin:0 0 14px}
 </style>
 </head>
 <body>
@@ -65,6 +67,7 @@ html,body{margin:0;height:100%;overflow:hidden;background:var(--sky);color:var(-
     <div class="row"><label>縦分割</label><div class="opts" data-key="rows"></div></div>
     <div class="row"><label>横分割</label><div class="opts" data-key="cols"></div></div>
     <div class="row"><label>ヒント(薄い下絵)</label><div class="opts" data-key="hint"></div></div>
+    <button id="refreshBtn" type="button">🔄 ほかの絵にする</button>
     <button id="closeBtn" type="button">とじる</button>
   </div>
 </div>
@@ -320,6 +323,10 @@ html,body{margin:0;height:100%;overflow:hidden;background:var(--sky);color:var(-
     if (before.rows !== cfg.rows || before.cols !== cfg.cols) startRound(true);
     else if (cur) board.classList.toggle('hint', cfg.hint);
     before = null;
+  });
+
+  $('refreshBtn').addEventListener('click', () => {
+    panelWrap.classList.remove('show'); before = null; startRound(false);
   });
 
   if (window.Asobo && Asobo.cornerButton) Asobo.cornerButton({ corner: 'left', icon: '⚙️', label: '設定（長押し）', onHold: openSettings });
