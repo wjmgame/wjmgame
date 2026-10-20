@@ -20,7 +20,7 @@ canvas{display:block;width:100%;height:100%;touch-action:none}
 (function () {
   'use strict';
 
-  /* 動物は後で差し替える。9種類ぶんのアイコンをここに並べる(いまは全部 grape1) */
+  /* 動物の画像。増やすときはここに足す(出る動物はこの中からランダム)。固定名で参照するので assets/icons/ に置く */
   var ANIMAL_URLS = [
     'assets/icons/cat.png', 'assets/icons/dog.png', 'assets/icons/bear.png',
     'assets/icons/fox.png', 'assets/icons/panda.png', 'assets/icons/rabbit.png'
@@ -31,8 +31,10 @@ canvas{display:block;width:100%;height:100%;touch-action:none}
   var LANES = 3;          /* レーン数 */
   var STACK = 2;          /* 1レーンに並ぶ動物の数 */
   var SPAWN_SEC = 3;      /* 動物が増える間隔(秒) */
-  var SLIDE_SPEED = 0.42; /* りんごの横移動(画面幅/秒) */
-  var FLY_SPEED = 1.5;    /* りんごの飛ぶ速さ(画面高さ/秒) */
+  var SLIDE_SPEED = 0.26; /* りんごの横移動(画面幅/秒) */
+  var FLY_SPEED = 0.5;    /* りんごの飛ぶ速さ(画面高さ/秒) */
+  var LEAVE_SPEED = 0.7;  /* 動物が去る速さ(画面幅/秒) */
+  var DESCEND_EASE = 4;   /* 動物が前へ降りてくる速さ(大きいほど速い) */
 
   var canvas = document.getElementById('c');
   var ctx = canvas.getContext('2d');
@@ -54,7 +56,7 @@ canvas{display:block;width:100%;height:100%;touch-action:none}
   var lanes = [];
   for (var i = 0; i < LANES; i++) lanes.push([]);
   var leaving = [];
-  var spawnT = 0.5;
+  var spawnT = 0.8;
   var apple = { x: 0, dir: 1, state: 'slide', y: 0, lane: 0, appearAt: 0 };
 
   function resize() {
@@ -63,20 +65,32 @@ canvas{display:block;width:100%;height:100%;touch-action:none}
     canvas.width = Math.round(W * dpr);
     canvas.height = Math.round(H * dpr);
     L.laneW = W / LANES;
-    L.groundY = H * 0.6;
-    var areaBottom = H * 0.58;
-    var gapRate = 0.08;
+    L.groundY = H * 0.52;            /* テーブルの奥のふち */
+    L.tableFrontY = H * 0.965;       /* テーブルの手前のふち */
     var sh = Math.min(L.laneW * 0.86, H * 0.2);
-    sh = Math.min(sh, (areaBottom - 78) / (STACK + gapRate * (STACK - 1)));
+    sh = Math.min(sh, (L.groundY - 70) / 1.91);
     L.sh = Math.max(sh, 24);
-    L.gap = L.sh * gapRate;
-    L.slot0Y = areaBottom - L.sh / 2 - 8;
+    L.gap = L.sh * 0.08;
+    L.slot0Y = L.groundY - L.sh * 0.38;
     L.appleSize = Math.min(W * 0.2, H * 0.14, 96);
-    L.trackY = H * 0.8;
+    L.trackY = H * 0.68;
     L.minX = L.appleSize / 2 + 12;
     L.maxX = W - L.appleSize / 2 - 12;
     if (apple.x === 0) apple.x = W / 2;
     apple.x = Math.max(L.minX, Math.min(L.maxX, apple.x));
+    /* かご(左下) */
+    L.bh = Math.min(Math.min(W * 0.3, 150) * 0.58, H * 0.15);
+    L.bw = L.bh / 0.58;
+    L.bx = 12;
+    L.bBottom = L.tableFrontY - 4;
+    L.bTop = L.bBottom - L.bh;
+    /* 木目(毎回同じ模様になるよう固定の乱数) */
+    var seed = 7;
+    function rnd() { seed = (seed * 16807) % 2147483647; return seed / 2147483647; }
+    L.grain = [];
+    for (var g = 0; g < 26; g++) {
+      L.grain.push({ x: rnd() * W, y: L.groundY + 14 + rnd() * (L.tableFrontY - L.groundY - 20), len: W * (0.08 + rnd() * 0.14), amp: 2 + rnd() * 3 });
+    }
   }
 
   function slotY(pos) { return L.slot0Y - pos * (L.sh + L.gap); }
@@ -117,14 +131,14 @@ canvas{display:block;width:100%;height:100%;touch-action:none}
       for (var j = 0; j < lanes[i].length; j++) {
         var a = lanes[i][j];
         a.age += dt;
-        a.pos += (j - a.pos) * Math.min(1, dt * 9);
+        a.pos += (j - a.pos) * Math.min(1, dt * DESCEND_EASE);
       }
     }
 
     for (var k = leaving.length - 1; k >= 0; k--) {
       var v = leaving[k];
-      v.ox += v.dir * W * 1.6 * dt;
-      v.rot += v.dir * dt * 3;
+      v.t += dt;
+      v.ox += v.dir * W * LEAVE_SPEED * dt;
       if (Math.abs(v.ox) > W) leaving.splice(k, 1);
     }
 
@@ -141,7 +155,7 @@ canvas{display:block;width:100%;height:100%;touch-action:none}
           lanes[apple.lane].shift();
           var cx = laneX(apple.lane);
           var dir = apple.x < cx ? -1 : (apple.x > cx ? 1 : (Math.random() < 0.5 ? -1 : 1));
-          leaving.push({ img: target.img, x: cx, y: ty, ox: 0, dir: dir, rot: 0 });
+          leaving.push({ img: target.img, x: cx, y: ty, ox: 0, dir: dir, t: 0 });
           sound('pop');
           resetApple();
         }
@@ -182,58 +196,178 @@ canvas{display:block;width:100%;height:100%;touch-action:none}
     return 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2);
   }
 
-  function draw() {
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.fillStyle = '#8fd3f4';
-    ctx.fillRect(0, 0, W, H);
-    ctx.fillStyle = '#bdeccb';
-    ctx.fillRect(0, L.groundY, W, H - L.groundY);
+  function drawCloud(x, y, r) {
+    ctx.fillStyle = 'rgba(255,255,255,0.85)';
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.arc(x + r * 1.1, y + r * 0.2, r * 0.8, 0, Math.PI * 2);
+    ctx.arc(x - r * 1.1, y + r * 0.25, r * 0.7, 0, Math.PI * 2);
+    ctx.fill();
+  }
 
-    if (apple.state === 'slide') {
-      var hl = Math.max(0, Math.min(LANES - 1, Math.floor(apple.x / L.laneW)));
-      ctx.fillStyle = 'rgba(255,255,255,0.22)';
-      ctx.fillRect(hl * L.laneW, 0, L.laneW, L.groundY);
+  function drawBackground() {
+    var g = ctx.createLinearGradient(0, 0, 0, L.groundY);
+    g.addColorStop(0, '#9fdcff');
+    g.addColorStop(1, '#e9f7ff');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, W, L.groundY);
+    drawCloud(W * 0.18, H * 0.1, H * 0.03);
+    drawCloud(W * 0.55, H * 0.17, H * 0.025);
+    var hillTop = L.groundY * 0.6;
+    ctx.fillStyle = '#9ad98c';
+    ctx.beginPath();
+    ctx.moveTo(0, L.groundY);
+    for (var x = 0; x < W + 8; x += 8) {
+      var hx = Math.min(x, W);
+      ctx.lineTo(hx, hillTop + Math.sin(hx / W * Math.PI * 2.4 + 0.5) * H * 0.012);
     }
+    ctx.lineTo(W, L.groundY);
+    ctx.closePath();
+    ctx.fill();
+  }
 
-    ctx.strokeStyle = 'rgba(255,255,255,0.7)';
-    ctx.lineWidth = 3;
-    ctx.setLineDash([10, 10]);
-    for (var d = 1; d < LANES; d++) {
-      ctx.beginPath(); ctx.moveTo(d * L.laneW, 0); ctx.lineTo(d * L.laneW, L.groundY); ctx.stroke();
+  function drawTable() {
+    var top = L.groundY, front = L.tableFrontY;
+    var g = ctx.createLinearGradient(0, top, 0, front);
+    g.addColorStop(0, '#e6b074');
+    g.addColorStop(1, '#cf9054');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, top, W, front - top);
+    /* 奥のふちのハイライト */
+    ctx.fillStyle = '#f3cb97';
+    ctx.fillRect(0, top, W, Math.max(6, H * 0.012));
+    /* 板の継ぎ目 */
+    ctx.strokeStyle = 'rgba(110,60,20,0.28)';
+    ctx.lineWidth = 2;
+    var planks = 5;
+    for (var p = 1; p < planks; p++) {
+      var y = top + (front - top) * p / planks;
+      ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
     }
-    ctx.beginPath(); ctx.moveTo(0, L.groundY); ctx.lineTo(W, L.groundY); ctx.stroke();
-    ctx.beginPath(); ctx.moveTo(L.minX, L.trackY); ctx.lineTo(L.maxX, L.trackY); ctx.stroke();
-    ctx.setLineDash([]);
+    /* 木目 */
+    ctx.strokeStyle = 'rgba(110,60,20,0.16)';
+    ctx.lineWidth = 2;
+    for (var q = 0; q < L.grain.length; q++) {
+      var gr = L.grain[q];
+      ctx.beginPath();
+      ctx.moveTo(gr.x, gr.y);
+      ctx.quadraticCurveTo(gr.x + gr.len / 2, gr.y - gr.amp, gr.x + gr.len, gr.y);
+      ctx.stroke();
+    }
+    /* 手前の板の厚み */
+    ctx.fillStyle = '#a86a38';
+    ctx.fillRect(0, front, W, H - front);
+    ctx.fillStyle = '#8a5530';
+    ctx.fillRect(0, front, W, 3);
+  }
 
-    ctx.fillStyle = 'rgba(255,255,255,0.28)';
-    for (var li = 0; li < LANES; li++) {
-      for (var si = 0; si < STACK; si++) {
-        roundRect(laneX(li) - L.sh / 2, slotY(si) - L.sh / 2, L.sh, L.sh, L.sh * 0.18);
-        ctx.fill();
+  function drawBasket() {
+    var x = L.bx, w = L.bw, h = L.bh, top = L.bTop, bot = L.bBottom;
+    var as = Math.min(L.appleSize * 0.78, w * 0.34);
+    var cx = x + w / 2;
+    var ap = load(APPLE_SLIDE);
+    /* 影 */
+    ctx.fillStyle = 'rgba(60,30,10,0.22)';
+    ctx.beginPath();
+    ctx.ellipse(cx, bot + 2, w * 0.56, h * 0.1, 0, 0, Math.PI * 2);
+    ctx.fill();
+    /* 山積みのりんご(奥から手前へ) */
+    drawIcon(ap, cx, top - as * 1.15, as, 0.1, null, '#ff7a6b');
+    drawIcon(ap, cx - as * 0.5, top - as * 0.62, as, -0.15, null, '#ff7a6b');
+    drawIcon(ap, cx + as * 0.5, top - as * 0.62, as, 0.2, null, '#ff7a6b');
+    drawIcon(ap, cx - as * 0.95, top - as * 0.05, as, 0.12, null, '#ff7a6b');
+    drawIcon(ap, cx, top - as * 0.05, as, -0.1, null, '#ff7a6b');
+    drawIcon(ap, cx + as * 0.95, top - as * 0.05, as, 0.05, null, '#ff7a6b');
+    /* かごの本体 */
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(x, top);
+    ctx.lineTo(x + w, top);
+    ctx.lineTo(x + w * 0.91, bot);
+    ctx.lineTo(x + w * 0.09, bot);
+    ctx.closePath();
+    ctx.fillStyle = '#c98b4a';
+    ctx.fill();
+    ctx.clip();
+    var rows = 4, rh = h / rows, step = w / 6;
+    ctx.strokeStyle = 'rgba(90,50,15,0.45)';
+    ctx.lineWidth = 2;
+    for (var r = 0; r <= rows; r++) {
+      ctx.beginPath(); ctx.moveTo(x, top + r * rh); ctx.lineTo(x + w, top + r * rh); ctx.stroke();
+    }
+    ctx.strokeStyle = 'rgba(90,50,15,0.35)';
+    for (var r2 = 0; r2 < rows; r2++) {
+      for (var c = 0; c <= 6; c++) {
+        var vx = x + c * step + (r2 % 2) * step / 2;
+        ctx.beginPath(); ctx.moveTo(vx, top + r2 * rh); ctx.lineTo(vx, top + (r2 + 1) * rh); ctx.stroke();
       }
     }
+    ctx.restore();
+    ctx.beginPath();
+    ctx.moveTo(x, top);
+    ctx.lineTo(x + w, top);
+    ctx.lineTo(x + w * 0.91, bot);
+    ctx.lineTo(x + w * 0.09, bot);
+    ctx.closePath();
+    ctx.strokeStyle = '#8a5a2b';
+    ctx.lineWidth = 3;
+    ctx.stroke();
+    /* ふち */
+    roundRect(x - w * 0.03, top - h * 0.06, w * 1.06, h * 0.2, h * 0.1);
+    ctx.fillStyle = '#b27536';
+    ctx.fill();
+    ctx.stroke();
+    ctx.strokeStyle = 'rgba(255,230,180,0.5)';
+    ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(x + w * 0.06, top - h * 0.01); ctx.lineTo(x + w * 0.94, top - h * 0.01); ctx.stroke();
+  }
 
+  function draw() {
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    drawBackground();
+
+    var hl = apple.state === 'slide'
+      ? Math.max(0, Math.min(LANES - 1, Math.floor(apple.x / L.laneW)))
+      : apple.lane;
+    ctx.fillStyle = 'rgba(255,255,255,0.2)';
+    ctx.fillRect(hl * L.laneW, 0, L.laneW, L.groundY);
+
+    /* テーブルの向こうに立つ動物(テーブルが足元を隠す) */
     for (var i = 0; i < LANES; i++) {
       for (var j = lanes[i].length - 1; j >= 0; j--) {
         var a = lanes[i][j];
-        var t = Math.min(1, a.age / 0.3);
+        var t = Math.min(1, a.age / 0.5);
         var sc = easeOutBack(t);
-        drawIcon(a.img, laneX(i), slotY(a.pos), L.sh * 0.9 * sc, 0, null, '#8e7cff');
+        var depth = 1 - 0.08 * Math.min(a.pos, 1.5);
+        drawIcon(a.img, laneX(i), slotY(a.pos), L.sh * 0.9 * sc * depth, 0, null, '#8e7cff');
       }
     }
-
     for (var k = 0; k < leaving.length; k++) {
       var v = leaving[k];
-      drawIcon(v.img, v.x + v.ox, v.y, L.sh * 0.9, v.rot * 0.1, null, '#8e7cff');
-      drawIcon(load(APPLE_SLIDE), v.x + v.ox + v.dir * L.sh * 0.35, v.y + L.sh * 0.25, L.sh * 0.42, 0, null, '#ff7a6b');
+      var bob = Math.sin(v.t * 7) * L.sh * 0.025;
+      var vx = v.x + v.ox;
+      drawIcon(v.img, vx, v.y + bob, L.sh * 0.9, v.dir * 0.05, null, '#8e7cff');
+      drawIcon(load(APPLE_SLIDE), vx + v.dir * L.sh * 0.32, v.y + bob + L.sh * 0.05, L.sh * 0.4, 0, null, '#ff7a6b');
     }
 
+    drawTable();
+
+    ctx.fillStyle = 'rgba(255,255,255,0.14)';
+    ctx.fillRect(hl * L.laneW, L.groundY, L.laneW, L.tableFrontY - L.groundY);
+
+    /* りんご(テーブルの上) */
+    ctx.fillStyle = 'rgba(60,30,10,0.25)';
+    ctx.beginPath();
+    ctx.ellipse(apple.x, L.trackY + L.appleSize * 0.42, L.appleSize * 0.38, L.appleSize * 0.1, 0, 0, Math.PI * 2);
+    ctx.fill();
     if (apple.state === 'slide') {
-      var fade = Math.min(1, (performance.now() - apple.appearAt) / 250);
+      var fade = Math.min(1, (performance.now() - apple.appearAt) / 400);
       drawIcon(load(APPLE_SLIDE), apple.x, L.trackY, L.appleSize, 0, fade, '#ff7a6b');
     } else {
       drawIcon(load(APPLE_FLY), apple.x, apple.y, L.appleSize * 1.05, 0, null, '#ff7a6b');
     }
+
+    drawBasket();
   }
 
   var last = performance.now();
