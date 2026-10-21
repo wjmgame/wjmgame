@@ -1,5 +1,6 @@
 // 全ゲーム共通。ゲームHTMLの <head> に <script src="../../shared/common.js"></script> を入れるだけで有効になる
 //  - 右上に薄い🏠ボタン: 1.5秒長押しでトップへ戻る(長押し中に輪が広がる)。隅のボタンは Asobo.cornerButton で作る
+//  - 戻るスワイプ(Safariの左端スワイプなど)の抑止: ゲームからトップへ戻れるのは🏠の長押し(Asobo.home)だけ
 //  - パス解決: このファイルの場所からサイトのルートを割り出す。Asobo.url("assets/...") / Asobo.home() を使い、相対パスを直書きしない
 //  - ズーム・長押しメニューの抑止
 //  - 素材の一覧: Asobo.assets.urls("フォルダ") で assets/<フォルダ>/list.json を読む(毎回ランダム)
@@ -9,7 +10,25 @@
   const SRC = (document.currentScript && document.currentScript.src) || "";
   const ROOT = SRC ? new URL("../", SRC).href : new URL("./", location.href).href; // shared/ の1つ上がルート
   const url = (path) => new URL(path, ROOT).href;
-  const home = () => { location.href = ROOT; };
+  // トップへ戻る。戻るスワイプの抑止(trapBack)で足した履歴を先に1つ戻してから移動するので、履歴にゲームが残らない
+  let trapped = false, leaving = false;
+  const home = () => {
+    if (!trapped) { location.href = ROOT; return; }
+    leaving = true;
+    history.back();
+    setTimeout(() => location.replace(ROOT), 500); // popstate が来なかったときの保険
+  };
+  // Safari の左端スワイプ(戻る)でトップへ戻ってしまうのを防ぐ。戻れるのは🏠の長押しだけ
+  function trapBack() {
+    try {
+      history.pushState({ asobo: 1 }, "", location.href);
+      trapped = true;
+      addEventListener("popstate", () => {
+        if (leaving) { location.replace(ROOT); return; }
+        history.pushState({ asobo: 1 }, "", location.href);
+      });
+    } catch (e) {}
+  }
   // --- 素材の一覧(assets/<フォルダ>/list.json は build.py が自動生成)---
   const shuffle = (a) => { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; };
   const probe = (src) => new Promise((res) => { const im = new Image(); im.onload = () => res(true); im.onerror = () => res(false); im.src = src; });
@@ -111,6 +130,7 @@
 
   function addGate() {
     if (document.documentElement.dataset.asobo === "top") return; // トップは独自の保護者メニュー(右上に⚙️)
+    trapBack();
     cornerButton({ corner: "right", icon: "🏠", label: "トップへ戻る（長押し）", onHold: home });
   }
   addGate();
