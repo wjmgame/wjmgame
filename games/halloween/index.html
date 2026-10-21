@@ -77,7 +77,7 @@
 <div id="stage"></div>
 <script>
 (function () {
-  var MAX = 20;
+  var MAX = 8;
   var stage = document.getElementById('stage');
   var list = [];
   var pool = [], idx = 0;
@@ -138,7 +138,7 @@
 
   function size() {
     var m = Math.min(innerWidth, innerHeight);
-    return Math.round(Math.min(Math.max(m * 0.3, 130), 220));
+    return Math.round(Math.min(Math.max(m * 0.6, 260), 440));
   }
 
   function spawn(x, y) {
