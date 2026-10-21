@@ -243,7 +243,25 @@
     if(!e.target.closest('.card')) safe(function(){ A().blip(Math.floor(Math.random()*5)); });
   });
 
-  window.addEventListener('resize', function(){ if(cards.length && !finished) { var keep = pairs; startLevel(); pairs = keep; } });
+  // ウインドウの大きさが変わったときは、カードを配り直さず、位置と大きさだけ直す(めくった状態・そろった数はそのまま)
+  function placeCards(){
+    var n = cards.length;
+    if(!n) return;
+    var L = layout(n);
+    var totalW = L.cols*L.cw + (L.cols-1)*L.gap;
+    var totalH = L.rows*L.ch + (L.rows-1)*L.gap;
+    var ox = 12 + ((board.clientWidth-24) - totalW)/2;
+    var oy = 12 + ((board.clientHeight-24) - totalH)/2;
+    cards.forEach(function(card, i){
+      var c = i % L.cols, r = Math.floor(i / L.cols);
+      var inRow = (r === L.rows-1) ? (n - r*L.cols) : L.cols;
+      var rowOffset = ((L.cols - inRow) * (L.cw + L.gap))/2;
+      card.el.style.width = L.cw+'px'; card.el.style.height = L.ch+'px';
+      card.el.style.left = (ox + c*(L.cw+L.gap) + rowOffset)+'px';
+      card.el.style.top = (oy + r*(L.ch+L.gap))+'px';
+    });
+  }
+  window.addEventListener('resize', placeCards);
 
   loadFaces().then(startLevel);
 })();
