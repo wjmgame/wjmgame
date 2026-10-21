@@ -266,7 +266,61 @@ def t_many_games():
             srv.shutdown()
 
 
+def t_resize(href):
+    """iPadのウインドウサイズ変更を想定: 大きさを変えても、画面を作り直さない(進行状況が消えない)"""
+    def run():
+        errs = []
+        page = new_page(errs)
+        page.goto(base + href, wait_until="load")
+        page.wait_for_timeout(1000)
+        for x, y in [(195, 420), (120, 300)]:
+            page.mouse.click(x, y)
+            page.wait_for_timeout(150)
+        page.evaluate("() => { window.__marker = Math.random(); window.__m0 = window.__marker; window.__els = [...document.body.querySelectorAll('*')]; }")
+        for w, h in [(300, 500), (760, 600), (1024, 700), (390, 844)]:
+            page.set_viewport_size({"width": w, "height": h})
+            page.wait_for_timeout(350)
+        kept, total, same = page.evaluate("() => [window.__els.filter((e) => e.isConnected).length, window.__els.length, window.__marker === window.__m0]")
+        page.close()
+        assert same, "大きさを変えるとページが再読み込みされます"
+        assert kept >= total * 0.8, f"大きさを変えると画面が作り直されます(元の要素 {total} 個のうち {kept} 個しか残っていません。進行状況が消える可能性)"
+        no_errors(errs)
+    return run
+
+
+def t_back_trap():
+    """Safariの左端スワイプ(戻る)でトップへ戻らない。戻れるのは🏠の長押しだけ"""
+    errs = []
+    page = new_page(errs)
+    page.goto(base)
+    wait_tiles(page)
+    page.click(".tile")  # 通常どおり、トップからゲームへ入る
+    page.wait_for_url(lambda u: "/games/" in u)
+    page.wait_for_timeout(800)
+    page.mouse.click(200, 400)
+    game_url = page.url
+    page.go_back()
+    page.wait_for_timeout(600)
+    assert page.url == game_url, "戻る操作で、ゲームからトップへ戻ってしまいます"
+    page.mouse.move(VIEWPORT["width"] - 28, 28)
+    page.mouse.down()
+    try:
+        page.wait_for_url(lambda u: u.rstrip("/") == base.rstrip("/"), timeout=4000)
+    finally:
+        try:
+            page.mouse.up()
+        except Exception:
+            pass
+    page.wait_for_timeout(500)
+    page.go_back()
+    page.wait_for_timeout(500)
+    assert "/games/" not in page.url, "🏠で戻ったあと、戻る操作でゲームに戻ってしまいます(履歴が残っています)"
+    page.close()
+
+
 def run(name, fn):
+    if os.environ.get("ONLY") and os.environ["ONLY"] not in name:  # 手元で一部のテストだけ動かす: ONLY=リサイズ python3 scripts/browser_test.py
+        return
     last = ""
     for attempt in (1, 2):
         try:
@@ -297,6 +351,9 @@ def main():
         for g in games:
             run(f"ゲーム: {g['title']}", t_game(g["href"]))
         run("保護者ゲート(右上の長押しでトップへ)", t_gate)
+        run("戻るスワイプの抑止(戻れるのは🏠の長押しだけ)", t_back_trap)
+        for g in games:
+            run(f"リサイズしても進行状況が消えない: {g['title']}", t_resize(g["href"]))
         run("ミュート設定の引き継ぎ", t_mute)
         run("ゲームが増えても全タイルに届く(9個・20個)", t_many_games)
         run("素材フォルダの読み込み", t_assets)
