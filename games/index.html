@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="game-title" content="こうじ">
+<meta name="game-icon" content="🚧">
+<meta name="game-color" content="#ffa24d">
+<meta name="game-order" content="100">
+<title>こうじ</title>
+<style>
+  html, body {
+    margin: 0; height: 100%; overflow: hidden; background: #8fd3f4;
+    overscroll-behavior: none; -webkit-user-select: none; user-select: none;
+    -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent;
+  }
+  canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; }
+  #panel { position: fixed; inset: 0; z-index: 10; display: flex; align-items: center; justify-content: center;
+    background: rgba(35,48,90,0.55); font-family: -apple-system, 'Hiragino Sans', sans-serif; color: #23305a; }
+  #panel[hidden] { display: none; }
+  #panel .card { background: #fff; border-radius: 20px; padding: 20px 22px; width: min(86vw, 340px); box-sizing: border-box; }
+  #panel h1 { margin: 0 0 12px; font-size: 20px; }
+  #panel label { display: block; margin: 12px 0 0; font-size: 14px; }
+  #panel select { display: block; width: 100%; margin-top: 4px; padding: 10px; font-size: 17px; color: #23305a;
+    border: 2px solid #8fd3f4; border-radius: 12px; background: #fff; }
+  #panel p { margin: 12px 0 0; font-size: 12px; opacity: 0.7; }
+  #panel button { margin-top: 14px; width: 100%; padding: 12px; font-size: 17px; font-weight: 700; color: #fff;
+    background: #4ccb8a; border: 0; border-radius: 12px; }
+  #panel button.sub { background: #ff7a6b; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="panel" hidden>
+  <div class="card">
+    <h1>せってい</h1>
+    <label>タップの回数(1つの作業あたり)<select id="sel-taps"></select></label>
+    <label>まちの空き地の数<select id="sel-lots"></select></label>
+    <p>空き地の数を変えると、まちをリセットします</p>
+    <button id="reset" class="sub">まちをリセット</button>
+    <button id="panel-close">とじる</button>
+  </div>
+</div>
+<script src="../../shared/common.js"></script>
+<script>
+(() => {
+'use strict';
+const A = window.Asobo || {};
+const snd = (f, ...a) => { try { if (typeof A[f] === 'function') return A[f](...a); } catch (e) {} };
+
+/* 素材: 画像を assets/icons/kouji-<名前>.png に置いたら USE_IMAGES を true にする(false の間は絵文字の仮素材) */
+const USE_IMAGES = false;
+const MACH = [ // 工程の順(ほる→つむ→はこぶ→ならす→くむ→しあげ)
+  { k: 'shovel', e: '🚜' }, { k: 'loader', e: '🚛' }, { k: 'dump', e: '🚚' },
+  { k: 'bulldozer', e: '🚧' }, { k: 'crane', e: '🏗️' }, { k: 'carpenter', e: '👷' }
+];
+const BLDG = [
+  { k: 'house', e: '🏠' }, { k: 'building', e: '🏢' }, { k: 'school', e: '🏫' },
+  { k: 'shop', e: '🏪' }, { k: 'hospital', e: '🏥' }, { k: 'station', e: '🚉' }
+];
+const imgs = {};
+if (USE_IMAGES && A.url) MACH.concat(BLDG).forEach(o => {
+  const im = new Image();
+  im.onload = () => { imgs[o.k] = im; };
+  im.src = A.url('assets/icons/kouji-' + o.k + '.png');
+});
+
+/* 設定と保存(この端末に保存される) */
+const TAPS_OPT = [1, 2, 3, 4, 5], LOT_OPT = [8, 12, 16];
+const load = (k, d) => { try { const v = JSON.parse(localStorage.getItem(k)); return v == null ? d : v; } catch (e) { return d; } };
+const save = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} };
+const set = Object.assign({ taps: 3, lots: 12 }, load('kouji-settings', {}));
+set.taps = TAPS_OPT.includes(+set.taps) ? +set.taps : 3;
+set.lots = LOT_OPT.includes(+set.lots) ? +set.lots : 12;
+let town = load('kouji-town', []);
+town = (Array.isArray(town) ? town : []).filter(i => Number.isInteger(i) && i >= 0 && i < BLDG.length).slice(0, set.lots);
+
+let scene = town.length ? 'town' : 'site';
+let stage = 0, taps = 0, shown = 0, wig = 0, t = 0, popT = 1, doneT = -1, bType = 0, paused = false;
+const parts = [];
+
+const cv = document.getElementById('c'), g = cv.getContext('2d');
+let W = 0, H = 0, dpr = 1;
+function layout() { // 大きさだけ直す(進行状況は触らない)
+  W = window.innerWidth; H = window.innerHeight; dpr = Math.min(2, window.devicePixelRatio || 1);
+  cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
+}
+
+/* ---------- 効果 ---------- */
+function spark(x, y, color, n) {
+  for (let i = 0; i < n; i++) {
+    const a = Math.random() * 6.28, v = 60 + Math.random() * 140;
+    parts.push({ x, y, vx: Math.cos(a) * v, vy: Math.sin(a) * v - 60, l: 0.6 + Math.random() * 0.3, c: color, s: 4 + Math.random() * 4 });
+  }
+}
+function confetti() {
+  const cs = ['#ff7a6b', '#ffc83d', '#4ccb8a', '#8e7cff', '#5cc8ff'];
+  for (let i = 0; i < 40; i++) parts.push({ x: W * Math.random(), y: -10 - Math.random() * 60, vx: (Math.random() - 0.5) * 80, vy: 120 + Math.random() * 200, l: 2.5, c: cs[i % 5], s: 6 + Math.random() * 5 });
+}
+const newBuild = () => { scene = 'site'; stage = 0; taps = 0; shown = 0; doneT = -1; };
+
+/* ---------- 進行 ---------- */
+function stageDone() {
+  snd('tone', 523, 0.15, 0.2, 1); setTimeout(() => snd('tone', 784, 0.2, 0.2, 1), 120);
+  stage++; taps = 0; shown = 0;
+  if (stage >= MACH.length) {
+    bType = Math.random() * BLDG.length | 0; doneT = 0; confetti(); snd('pop');
+    [523, 659, 784, 1047].forEach((f, i) => setTimeout(() => snd('tone', f, 0.25, 0.2, 1), i * 130));
+  }
+}
+function update(dt) {
+  t += dt; wig = Math.max(0, wig - dt * 3);
+  if (scene === 'site') {
+    if (doneT >= 0) {
+      doneT += dt;
+      if (doneT > 1.8) {
+        town.push(bType); save('kouji-town', town);
+        scene = 'town'; popT = 0; doneT = -1;
+        if (town.length >= set.lots) confetti();
+      }
+    } else {
+      shown += (taps / set.taps - shown) * Math.min(1, dt * 8);
+      if (taps >= set.taps && shown > 0.97) { shown = 1; stageDone(); }
+    }
+  } else popT = Math.min(1, popT + dt * 1.4);
+  for (let i = parts.length - 1; i >= 0; i--) {
+    const p = parts[i]; p.l -= dt; p.x += p.vx * dt; p.y += p.vy * dt; p.vy += 300 * dt;
+    if (p.l <= 0) parts.splice(i, 1);
+  }
+}
+
+/* ---------- 描画 ---------- */
+function rr(x, y, w, h, r) {
+  g.beginPath(); g.moveTo(x + r, y); g.arcTo(x + w, y, x + w, y + h, r); g.arcTo(x + w, y + h, x, y + h, r);
+  g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath();
+}
+function mound(x, y, w, h, c) {
+  if (h <= 0.5) return;
+  g.fillStyle = c; g.beginPath(); g.moveTo(x - w, y); g.quadraticCurveTo(x, y - h * 2, x + w, y); g.closePath(); g.fill();
+}
+function icon(o, x, y, s) { // (x, y) は足元の中央
+  const im = imgs[o.k];
+  if (im) { const h = s * im.height / im.width; g.drawImage(im, x - s / 2, y - h, s, h); return; }
+  g.font = Math.round(s * 0.8) + 'px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.fillText(o.e, x, y - s * 0.45);
+}
+const easeBack = x => 1 + 2.70158 * Math.pow(x - 1, 3) + 1.70158 * Math.pow(x - 1, 2);
+function glow(x, y, r) {
+  g.fillStyle = 'rgba(255,224,102,0.55)';
+  g.beginPath(); g.arc(x, y, r * (1 + Math.sin(t * 6) * 0.08), 0, 7); g.fill();
+}
+
+function drawSite() {
+  const u = Math.min(W, H) * 0.12, cx = W / 2, gy = H * 0.5, py = gy + (H - gy) * 0.38, s = stage;
+  g.fillStyle = '#8fd3f4'; g.fillRect(0, 0, W, H);
+  g.fillStyle = '#ffe066'; g.beginPath(); g.arc(W * 0.5, H * 0.14, u * 0.6, 0, 7); g.fill();
+  g.fillStyle = '#7ed957'; g.fillRect(0, gy, W, H - gy);
+  g.fillStyle = '#c99a5b'; rr(cx - u * 4.8, py - u * 1.2, u * 9.6, u * 2.4, u * 0.5); g.fill();
+
+  if (s < MACH.length) {
+    const p = shown;
+    const hole = s === 0 ? p : s < 3 ? 1 : s === 3 ? 1 - p : 0;   // 穴
+    const pileL = s === 0 ? p : s === 1 ? 1 - p : 0;              // 左の土山
+    const heapR = s === 1 ? p : s === 2 ? 1 : s === 3 ? 1 - p : 0; // 右の土山
+    const pad = s < 3 ? 0 : s === 3 ? p : 1;                      // ならした地面
+    const fr = s === 4 ? p : s > 4 ? 1 : 0, fill = s === 5 ? p : 0;
+    if (pad > 0) { g.fillStyle = '#ead9b0'; rr(cx - u * 2.7 * pad, py - u * 0.3, u * 5.4 * pad, u * 0.6, u * 0.2); g.fill(); }
+    if (hole > 0) { g.fillStyle = '#5b3d22'; g.beginPath(); g.ellipse(cx, py, u * 2.6, u * 0.7 * hole, 0, 0, 7); g.fill(); }
+    mound(cx - u * 3.5, py + u * 0.3, u * 0.9, u * 1.5 * pileL, '#a67c4a');
+    mound(cx + u * 3.5, py + u * 0.3, u * 0.9, u * 1.5 * heapR, '#a67c4a');
+    if (fr > 0) { // 骨組み → 色が入る
+      const bw = u * 3.2, bh = u * 3, h = bh * fr, bx = cx - bw / 2, by = py;
+      if (fill > 0) { g.fillStyle = 'rgba(255,200,61,0.9)'; g.fillRect(bx, by - bh * fill, bw, bh * fill); }
+      g.strokeStyle = '#8a5a2b'; g.lineWidth = u * 0.12; g.strokeRect(bx, by - h, bw, h);
+      g.beginPath(); g.moveTo(bx, by); g.lineTo(bx + bw, by - h); g.moveTo(bx + bw, by); g.lineTo(bx, by - h); g.stroke();
+      if (fill > 0.7) { g.fillStyle = '#ff7a6b'; g.beginPath(); g.moveTo(bx - u * 0.2, by - bh); g.lineTo(cx, by - bh - u * 1.2 * (fill - 0.7) / 0.3); g.lineTo(bx + bw + u * 0.2, by - bh); g.fill(); }
+    }
+    const mx = [cx + u * 3.6, cx - u * 1.8, cx - u * 3.6 + p * u * 7.2, cx + u * 3.6 - p * u * 7.2, cx + u * 3.8, cx + u * 3][s], my = py + u * 1.4;
+    glow(mx, my - u, u * 1.5);
+    g.save(); g.translate(mx, my); g.rotate(Math.sin(t * 40) * wig * 0.12); icon(MACH[s], 0, 0, u * 2.2); g.restore();
+    if (taps === 0) { g.font = Math.round(u * 0.9) + 'px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillText('👆', mx, my + u * 0.9 + Math.sin(t * 5) * u * 0.15); }
+    for (let i = 0; i < set.taps; i++) { // タップの進み具合
+      g.fillStyle = i < taps ? '#4ccb8a' : 'rgba(255,255,255,0.7)';
+      g.beginPath(); g.arc(cx + (i - (set.taps - 1) / 2) * u * 0.55, u * 1.1, u * 0.2, 0, 7); g.fill();
+    }
+  } else { // できあがり
+    const k = 1 + Math.sin(doneT * 9) * 0.12 * Math.max(0, 1 - doneT);
+    icon(BLDG[bType], cx, py, u * 3.6 * k);
+  }
+
+  // 下の重機の並び(今やる重機が光る)
+  const ts = Math.min(u * 0.95, (W - 40) / MACH.length / 1.15), ty = H - 16 - env();
+  MACH.forEach((m, i) => {
+    const x = W / 2 + (i - (MACH.length - 1) / 2) * ts * 1.15;
+    if (i === s) glow(x, ty - ts * 0.5, ts * 0.75);
+    g.globalAlpha = i <= s || s >= MACH.length ? 1 : 0.35;
+    icon(m, x, ty, ts); g.globalAlpha = 1;
+    if (i < s) { g.fillStyle = '#4ccb8a'; g.beginPath(); g.arc(x + ts * 0.35, ty - ts * 0.85, ts * 0.2, 0, 7); g.fill();
+      g.fillStyle = '#fff'; g.font = 'bold ' + Math.round(ts * 0.28) + 'px sans-serif'; g.fillText('✓', x + ts * 0.35, ty - ts * 0.85); }
+  });
+}
+function env() { return 0; }
+
+function drawTown() {
+  const cols = 4, rows = Math.ceil(set.lots / cols);
+  const cell = Math.min(W * 0.92 / cols, H * 0.74 / rows, 190), x0 = (W - cell * cols) / 2, y0 = (H - cell * rows) / 2;
+  g.fillStyle = '#8fd3f4'; g.fillRect(0, 0, W, H);
+  g.fillStyle = '#7ed957'; g.fillRect(0, H * 0.28, W, H * 0.72);
+  for (let i = 0; i < set.lots; i++) {
+    const cx = x0 + (i % cols + 0.5) * cell, cy = y0 + (Math.floor(i / cols) + 0.5) * cell;
+    g.fillStyle = 'rgba(255,255,255,0.35)'; rr(cx - cell * 0.45, cy - cell * 0.45, cell * 0.9, cell * 0.9, cell * 0.15); g.fill();
+    g.setLineDash([cell * 0.1, cell * 0.08]); g.lineWidth = 3; g.strokeStyle = 'rgba(255,255,255,0.8)'; g.stroke(); g.setLineDash([]);
+    if (i < town.length) {
+      const k = i === town.length - 1 ? Math.max(0, easeBack(popT)) : 1;
+      icon(BLDG[town[i]], cx, cy + cell * 0.4, cell * 0.8 * k);
+    }
+  }
+  if (popT >= 0.9) {
+    const full = town.length >= set.lots;
+    g.font = Math.round(Math.min(W, H) * 0.1) + 'px sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.fillText(full ? '🎉' : '👆', W / 2, H - Math.min(W, H) * 0.09 - 12 + Math.sin(t * 5) * 6);
+  }
+}
+
+function draw() {
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  if (scene === 'site') drawSite(); else drawTown();
+  parts.forEach(p => { g.globalAlpha = Math.max(0, Math.min(1, p.l * 1.5)); g.fillStyle = p.c; g.fillRect(p.x, p.y, p.s, p.s); });
+  g.globalAlpha = 1;
+}
+
+/* ---------- 操作(どこをタップしてもOK) ---------- */
+cv.addEventListener('pointerdown', e => {
+  e.preventDefault();
+  if (paused) return;
+  if (scene === 'town') {
+    if (popT < 0.9) return;
+    if (town.length >= set.lots) { town = []; save('kouji-town', town); } // いっぱいなら最初から
+    newBuild(); snd('pop'); return;
+  }
+  if (doneT >= 0 || taps >= set.taps) return;
+  taps++; wig = 1;
+  snd('tone', 80 + Math.random() * 50, 0.12, 0.2, 0.7); snd('noise');
+  spark(e.clientX, e.clientY, ['#a67c4a', '#ffc83d', '#fff'][taps % 3], 8);
+});
+
+/* ---------- 設定パネル(左上の⚙️を1.5秒長押し) ---------- */
+const panel = document.getElementById('panel');
+const selTaps = document.getElementById('sel-taps'), selLots = document.getElementById('sel-lots');
+function fillSelect(sel, values, cur, label) {
+  sel.innerHTML = '';
+  values.forEach(v => { const o = document.createElement('option'); o.value = v; o.textContent = label(v); if (+v === +cur) o.selected = true; sel.appendChild(o); });
+}
+function openPanel() {
+  paused = true;
+  fillSelect(selTaps, TAPS_OPT, set.taps, v => v + ' 回' + (v === 3 ? '(標準)' : ''));
+  fillSelect(selLots, LOT_OPT, set.lots, v => v + ' ます' + (v === 12 ? '(標準)' : ''));
+  panel.hidden = false;
+}
+if (A.cornerButton) A.cornerButton({ corner: 'left', icon: '⚙️', label: '設定（長押し）', onHold: openPanel });
+selTaps.onchange = () => { set.taps = +selTaps.value; save('kouji-settings', set); taps = 0; shown = 0; };
+selLots.onchange = () => { set.lots = +selLots.value; save('kouji-settings', set); town = []; save('kouji-town', town); newBuild(); };
+document.getElementById('reset').onclick = () => { town = []; save('kouji-town', town); newBuild(); panel.hidden = true; paused = false; last = performance.now(); };
+document.getElementById('panel-close').onclick = () => { panel.hidden = true; paused = false; last = performance.now(); };
+
+/* ---------- 起動 ---------- */
+layout(); draw();
+window.addEventListener('resize', layout);
+window.addEventListener('orientationchange', () => setTimeout(layout, 200));
+let last = performance.now();
+function frame(now) {
+  const dt = Math.min(0.05, (now - last) / 1000); last = now;
+  if (!paused) update(dt);
+  draw(); requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
