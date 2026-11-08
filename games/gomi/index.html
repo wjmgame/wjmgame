@@ -12,7 +12,7 @@
 <style>
   html, body { margin: 0; height: 100%; overflow: hidden; background: #cfeeff; touch-action: none;
     -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent;
-    font-family: -apple-system, "Hiragino Sans", sans-serif; }
+    font-family: -apple-system, "Hiragino Sans", sans-serif; color: #23305a; }
   #stage { position: fixed; inset: 0; overflow: hidden; }
   .pane { position: absolute; box-sizing: border-box; }
   #pTop { background: linear-gradient(#bfe6fa 0%, #eaf8ff 70%, #c9cfdc 70%, #b4bccd 100%); }
@@ -27,70 +27,63 @@
     #pBot { left: 0; top: 0; width: 50%; height: 100%; border-right: 6px solid rgba(35,48,90,.18); }
   }
   .truck { position: absolute; pointer-events: none; }
-  #svgBack { z-index: 1; }
-  #svgFront { z-index: 3; }
-  #cavity { transition: stroke .15s; }
-  .hot #cavity { stroke: #ffc83d; stroke-width: 8; }
+  .tBack { z-index: 1; }
+  .tFront { z-index: 3; }
+  .cavity { transition: stroke .15s; }
+  .hot .cavity { stroke: #ffc83d; stroke-width: 8; }
   .spot { position: absolute; border-radius: 50%; background: rgba(35,48,90,.09); z-index: 0; pointer-events: none; }
   .bag { position: absolute; z-index: 2; touch-action: none; cursor: grab;
     filter: drop-shadow(0 4px 3px rgba(35,48,90,.28)); will-change: left, top; }
   .bag.anim { transition: left .28s cubic-bezier(.3,1.4,.5,1), top .28s cubic-bezier(.3,1.4,.5,1), width .28s, height .28s; }
   .bag svg { width: 100%; height: 100%; display: block; pointer-events: none; }
   .bag.intruck { pointer-events: none; }
-  #btn { position: absolute; z-index: 5; border: 0; padding: 0; border-radius: 50%; background: #ff7a6b;
+  .tbtn { position: absolute; z-index: 5; border: 0; padding: 0; border-radius: 50%; background: #ff7a6b;
     box-shadow: 0 7px 0 #c94d40, 0 10px 14px rgba(35,48,90,.3); touch-action: none; cursor: pointer;
     display: flex; align-items: center; justify-content: center; transition: transform .08s, box-shadow .08s; }
-  #btn:active, #btn.down { transform: translateY(5px); box-shadow: 0 2px 0 #c94d40, 0 4px 8px rgba(35,48,90,.3); }
-  #btn svg { width: 56%; height: 56%; pointer-events: none; }
-  #btn.ready { animation: pulse .7s ease-in-out infinite alternate; }
+  .tbtn.down { transform: translateY(5px); box-shadow: 0 2px 0 #c94d40, 0 4px 8px rgba(35,48,90,.3); }
+  .tbtn svg { width: 56%; height: 56%; pointer-events: none; }
+  .tbtn.ready { animation: pulse .7s ease-in-out infinite alternate; }
   @keyframes pulse { from { filter: brightness(1); } to { filter: brightness(1.18) drop-shadow(0 0 10px #ffc83d); } }
-  #beacon { animation: blink 1s steps(2) infinite; }
+  .beacon { animation: blink 1s steps(2) infinite; }
   @keyframes blink { 50% { opacity: .45; } }
+
+  #panel { position: fixed; inset: 0; z-index: 1000; background: rgba(35,48,90,.55);
+    display: flex; align-items: center; justify-content: center; touch-action: none; }
+  #panel[hidden] { display: none; }
+  #panel .card { background: #fff; border-radius: 22px; padding: 22px 22px 18px; width: min(86vw, 380px);
+    box-shadow: 0 10px 30px rgba(0,0,0,.3); text-align: center; }
+  #panel .ttl { font-size: 18px; font-weight: 700; }
+  #panel .sub { font-size: 14px; margin: 6px 0 14px; opacity: .75; }
+  #panel .row { display: flex; gap: 10px; justify-content: center; }
+  #panel .num { flex: 1; border: 3px solid #c9d3ee; background: #f4f7ff; border-radius: 16px; padding: 10px 0 8px;
+    font-size: 26px; font-weight: 700; color: #23305a; cursor: pointer; font-family: inherit; }
+  #panel .num small { display: block; font-size: 12px; font-weight: 400; margin-top: 2px; letter-spacing: -1px; }
+  #panel .num.on { border-color: #4ccb8a; background: #e3f8ee; }
+  #panel .close { margin-top: 16px; border: 0; background: #8e7cff; color: #fff; font-size: 16px; font-weight: 700;
+    border-radius: 14px; padding: 12px 34px; cursor: pointer; font-family: inherit; }
 </style>
 </head>
 <body>
 <div id="stage">
   <div class="pane" id="pTop"></div>
   <div class="pane" id="pBot"></div>
+</div>
 
-  <svg class="truck" id="svgBack" viewBox="0 0 360 280" xmlns="http://www.w3.org/2000/svg">
-    <ellipse cx="180" cy="270" rx="150" ry="8" fill="rgba(35,48,90,.18)"/>
-    <rect x="165" y="2" width="30" height="10" rx="3" fill="#8a93b5"/>
-    <ellipse id="beacon" cx="180" cy="8" rx="15" ry="9" fill="#ffc83d" stroke="#c98f00" stroke-width="3"/>
-    <rect x="50" y="16" width="260" height="196" rx="18" fill="#4ccb8a" stroke="#2f9e68" stroke-width="5"/>
-    <path d="M70 34H290M70 44H290" stroke="#2f9e68" stroke-width="3" stroke-linecap="round" opacity=".6"/>
-    <circle id="lamp0" cx="135" cy="76" r="9" fill="#c9d3ee" stroke="#23305a" stroke-width="3"/>
-    <circle id="lamp1" cx="165" cy="76" r="9" fill="#c9d3ee" stroke="#23305a" stroke-width="3"/>
-    <circle id="lamp2" cx="195" cy="76" r="9" fill="#c9d3ee" stroke="#23305a" stroke-width="3"/>
-    <circle id="lamp3" cx="225" cy="76" r="9" fill="#c9d3ee" stroke="#23305a" stroke-width="3"/>
-    <rect id="cavity" x="80" y="105" width="200" height="95" rx="10" fill="#2b3350" stroke="#23305a" stroke-width="6"/>
-    <rect x="62" y="120" width="14" height="48" rx="5" fill="#ff7a6b" stroke="#c94d40" stroke-width="3"/>
-    <rect x="284" y="120" width="14" height="48" rx="5" fill="#ff7a6b" stroke="#c94d40" stroke-width="3"/>
-    <rect x="68" y="198" width="224" height="14" rx="5" fill="#8a93b5" stroke="#23305a" stroke-width="3"/>
-    <rect x="58" y="214" width="244" height="16" rx="6" fill="#23305a"/>
-    <rect x="152" y="216" width="56" height="12" rx="3" fill="#fff"/>
-    <rect x="68" y="226" width="54" height="46" rx="12" fill="#23305a"/>
-    <rect x="238" y="226" width="54" height="46" rx="12" fill="#23305a"/>
-    <rect x="80" y="238" width="30" height="22" rx="6" fill="#8a93b5"/>
-    <rect x="250" y="238" width="30" height="22" rx="6" fill="#8a93b5"/>
-  </svg>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <pattern id="stripes" width="14" height="14" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+      <rect width="7" height="14" fill="#23305a"/>
+    </pattern>
+  </defs>
+</svg>
 
-  <svg class="truck" id="svgFront" viewBox="0 0 360 280" xmlns="http://www.w3.org/2000/svg">
-    <defs>
-      <pattern id="stripes" width="14" height="14" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
-        <rect width="7" height="14" fill="#23305a"/>
-      </pattern>
-    </defs>
-    <g id="blade">
-      <rect x="170" y="98" width="20" height="12" rx="3" fill="#8a93b5"/>
-      <rect x="86" y="108" width="188" height="22" rx="6" fill="#ffc83d" stroke="#c98f00" stroke-width="3"/>
-      <rect x="86" y="108" width="188" height="22" rx="6" fill="url(#stripes)" opacity=".3"/>
-    </g>
-  </svg>
-
-  <button id="btn" aria-label="かきあげ">
-    <svg viewBox="0 0 48 48"><path d="M12 12l12 12 12-12M12 26l12 12 12-12" stroke="#fff" stroke-width="6" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
-  </button>
+<div id="panel" hidden>
+  <div class="card">
+    <div class="ttl">ほごしゃせってい</div>
+    <div class="sub">しゅうしゅうしゃのだいすう</div>
+    <div class="row" id="numRow"></div>
+    <button class="close" id="closeBtn">とじる</button>
+  </div>
 </div>
 
 <script>
@@ -100,22 +93,19 @@
 
   var VBW = 360, VBH = 280;
   var TRUCK_SLOTS = [[110,166],[152,160],[194,166],[236,160]]; // トラックの中(SVG座標)
-  var TRUCK_MAX = 4;
+  var TRUCK_MAX = 4;   // 1台に入る袋の数
+  var MAX_TRUCKS = 4;  // 収集車の最大台数
   var COLORS = ['#6c7bff', '#4ccb8a', '#ff7a6b', '#ffc83d', '#b08cff', '#5ec8e8'];
 
   var stage = document.getElementById('stage');
   var pTop = document.getElementById('pTop');
   var pBot = document.getElementById('pBot');
-  var svgBack = document.getElementById('svgBack');
-  var svgFront = document.getElementById('svgFront');
-  var blade = document.getElementById('blade');
-  var btn = document.getElementById('btn');
 
-  var L = { T: null, B: null, s: 1, ox: 0, oy: 0, bagW: 80, homes: [] };
-  var bags = [];                       // 生きている袋
-  var truck = [null, null, null, null]; // トラックの中の袋
-  var busy = false;
+  var L = { T: null, B: null, s: 1, bagW: 80, homes: [] };
+  var bags = [];
+  var trucks = [];
   var refillTimer = null;
+  var nTrucks = loadCount();
   var spots = [];
   for (var i = 0; i < 6; i++) {
     var sp = document.createElement('div');
@@ -124,38 +114,141 @@
     spots.push(sp);
   }
 
-  function svgToPx(x, y) { return { x: L.ox + x * L.s, y: L.oy + y * L.s }; }
+  function loadCount() {
+    try {
+      var v = parseInt(localStorage.getItem('gomi.trucks'), 10);
+      if (v >= 1 && v <= MAX_TRUCKS) return v;
+    } catch (e) {}
+    return 1;
+  }
+  function saveCount() { try { localStorage.setItem('gomi.trucks', String(nTrucks)); } catch (e) {} }
+
+  function svgToPx(t, x, y) { return { x: t.ox + x * L.s, y: t.oy + y * L.s }; }
+
+  // ---- 収集車 ----
+  var BACK_SVG =
+    '<ellipse cx="180" cy="270" rx="150" ry="8" fill="rgba(35,48,90,.18)"/>' +
+    '<rect x="165" y="2" width="30" height="10" rx="3" fill="#8a93b5"/>' +
+    '<ellipse class="beacon" cx="180" cy="8" rx="15" ry="9" fill="#ffc83d" stroke="#c98f00" stroke-width="3"/>' +
+    '<rect x="50" y="16" width="260" height="196" rx="18" fill="#4ccb8a" stroke="#2f9e68" stroke-width="5"/>' +
+    '<path d="M70 34H290M70 44H290" stroke="#2f9e68" stroke-width="3" stroke-linecap="round" opacity=".6"/>' +
+    '<circle class="lamp" cx="135" cy="76" r="9" fill="#c9d3ee" stroke="#23305a" stroke-width="3"/>' +
+    '<circle class="lamp" cx="165" cy="76" r="9" fill="#c9d3ee" stroke="#23305a" stroke-width="3"/>' +
+    '<circle class="lamp" cx="195" cy="76" r="9" fill="#c9d3ee" stroke="#23305a" stroke-width="3"/>' +
+    '<circle class="lamp" cx="225" cy="76" r="9" fill="#c9d3ee" stroke="#23305a" stroke-width="3"/>' +
+    '<rect class="cavity" x="80" y="105" width="200" height="95" rx="10" fill="#2b3350" stroke="#23305a" stroke-width="6"/>' +
+    '<rect x="62" y="120" width="14" height="48" rx="5" fill="#ff7a6b" stroke="#c94d40" stroke-width="3"/>' +
+    '<rect x="284" y="120" width="14" height="48" rx="5" fill="#ff7a6b" stroke="#c94d40" stroke-width="3"/>' +
+    '<rect x="68" y="198" width="224" height="14" rx="5" fill="#8a93b5" stroke="#23305a" stroke-width="3"/>' +
+    '<rect x="58" y="214" width="244" height="16" rx="6" fill="#23305a"/>' +
+    '<rect x="152" y="216" width="56" height="12" rx="3" fill="#fff"/>' +
+    '<rect x="68" y="226" width="54" height="46" rx="12" fill="#23305a"/>' +
+    '<rect x="238" y="226" width="54" height="46" rx="12" fill="#23305a"/>' +
+    '<rect x="80" y="238" width="30" height="22" rx="6" fill="#8a93b5"/>' +
+    '<rect x="250" y="238" width="30" height="22" rx="6" fill="#8a93b5"/>';
+  var FRONT_SVG =
+    '<g class="blade">' +
+    '<rect x="170" y="98" width="20" height="12" rx="3" fill="#8a93b5"/>' +
+    '<rect x="86" y="108" width="188" height="22" rx="6" fill="#ffc83d" stroke="#c98f00" stroke-width="3"/>' +
+    '<rect x="86" y="108" width="188" height="22" rx="6" fill="url(#stripes)" opacity=".3"/>' +
+    '</g>';
+  var BTN_SVG = '<svg viewBox="0 0 48 48"><path d="M12 12l12 12 12-12M12 26l12 12 12-12" stroke="#fff" stroke-width="6" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+
+  function svgEl(cls, inner) {
+    var s = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    s.setAttribute('class', 'truck ' + cls);
+    s.setAttribute('viewBox', '0 0 ' + VBW + ' ' + VBH);
+    s.innerHTML = inner;
+    return s;
+  }
+
+  function buildTrucks() {
+    // 既存の収集車と、その中の袋を片づける
+    trucks.forEach(function (t) {
+      t.dead = true;
+      [t.back, t.front, t.btn].forEach(function (el) { if (el.parentNode) el.parentNode.removeChild(el); });
+    });
+    trucks = [];
+    bags = bags.filter(function (b) {
+      if (b.loc === 'truck') { if (b.el.parentNode) b.el.parentNode.removeChild(b.el); return false; }
+      return true;
+    });
+    for (var i = 0; i < nTrucks; i++) {
+      var t = { dead: false, busy: false, slots: [null, null, null, null], ox: 0, oy: 0, cx: 0, cy: 0 };
+      t.back = svgEl('tBack', BACK_SVG);
+      t.front = svgEl('tFront', FRONT_SVG);
+      t.btn = document.createElement('button');
+      t.btn.className = 'tbtn';
+      t.btn.setAttribute('aria-label', 'かきあげ');
+      t.btn.innerHTML = BTN_SVG;
+      t.blade = t.front.querySelector('.blade');
+      t.lamps = Array.prototype.slice.call(t.back.querySelectorAll('.lamp'));
+      stage.appendChild(t.back); stage.appendChild(t.front); stage.appendChild(t.btn);
+      bindButton(t);
+      trucks.push(t);
+    }
+    layout();
+    trucks.forEach(updateLamps);
+    checkRefill();
+  }
+
+  function bindButton(t) {
+    t.btn.addEventListener('pointerdown', function (e) {
+      e.preventDefault();
+      t.btn.classList.add('down');
+      press(t);
+    });
+    ['pointerup', 'pointercancel', 'pointerleave'].forEach(function (ev) {
+      t.btn.addEventListener(ev, function () { t.btn.classList.remove('down'); });
+    });
+  }
 
   // ---- レイアウト(位置と大きさだけ直す。作り直さない) ----
+  function fit(cw, ch) {
+    var bs = Math.max(44, Math.min(100, Math.min(cw, ch) * 0.2));
+    return { bs: bs, s: Math.max(0.1, Math.min((cw - 12) / VBW, (ch - 36 - bs - 18) / VBH)) };
+  }
+
   function layout() {
     var T = pTop.getBoundingClientRect(), B = pBot.getBoundingClientRect();
     L.T = T; L.B = B;
-    var m = Math.min(T.width, T.height);
-    var btnS = Math.max(56, Math.min(110, m * 0.2));
-    var topPad = 36, sidePad = 8;
-    var ax = T.left + sidePad, ay = T.top + topPad;
-    var aw = T.width - sidePad * 2, ah = T.height - topPad - btnS - 22;
-    L.s = Math.max(0.1, Math.min(aw / VBW, ah / VBH));
-    L.ox = ax + (aw - VBW * L.s) / 2;
-    L.oy = ay + (ah - VBH * L.s) / 2;
-    [svgBack, svgFront].forEach(function (el) {
-      el.style.left = L.ox + 'px'; el.style.top = L.oy + 'px';
-      el.style.width = VBW * L.s + 'px'; el.style.height = VBH * L.s + 'px';
-    });
-    btn.style.width = btn.style.height = btnS + 'px';
-    btn.style.left = (T.left + T.width / 2 - btnS / 2) + 'px';
-    btn.style.top = (T.top + T.height - btnS - 14) + 'px';
+    var n = trucks.length, best = null, c;
+    for (c = 1; c <= n; c++) {
+      var r = Math.ceil(n / c), f = fit(T.width / c, T.height / r);
+      if (!best || f.s > best.s + 1e-6) best = { c: c, r: r, s: f.s };
+    }
+    if (best) {
+      L.s = best.s;
+      var cw = T.width / best.c, ch = T.height / best.r, bs = fit(cw, ch).bs;
+      trucks.forEach(function (t, idx) {
+        var row = Math.floor(idx / best.c), col = idx % best.c;
+        var inRow = Math.min(best.c, n - row * best.c);
+        var x = T.left + (best.c - inRow) * cw / 2 + col * cw, y = T.top + row * ch;
+        var w = VBW * L.s, h = VBH * L.s;
+        var ah = ch - 36 - bs - 18;
+        t.ox = x + (cw - w) / 2;
+        t.oy = y + 36 + (ah - h) / 2;
+        t.cx = x + cw / 2; t.cy = y + ch / 2;
+        [t.back, t.front].forEach(function (el) {
+          el.style.left = t.ox + 'px'; el.style.top = t.oy + 'px';
+          el.style.width = w + 'px'; el.style.height = h + 'px';
+        });
+        t.btn.style.width = t.btn.style.height = bs + 'px';
+        t.btn.style.left = (x + cw / 2 - bs / 2) + 'px';
+        t.btn.style.top = (y + ch - bs - 12) + 'px';
+      });
+    }
 
-    var pad = 10, cw = (B.width - pad * 2) / 3, ch = (B.height - pad * 2) / 2;
-    L.bagW = Math.min(cw * 0.8, (ch * 0.8) / 1.1);
+    var pad = 10, bw = (B.width - pad * 2) / 3, bh = (B.height - pad * 2) / 2;
+    L.bagW = Math.min(bw * 0.8, (bh * 0.8) / 1.1);
     L.homes = [];
     for (var i = 0; i < 6; i++) {
-      var col = i % 3, row = (i / 3) | 0;
-      var h = { x: B.left + pad + cw * (col + 0.5), y: B.top + pad + ch * (row + 0.5) };
-      L.homes.push(h);
+      var col2 = i % 3, row2 = (i / 3) | 0;
+      var hm = { x: B.left + pad + bw * (col2 + 0.5), y: B.top + pad + bh * (row2 + 0.5) };
+      L.homes.push(hm);
       var sp = spots[i], sw = L.bagW * 0.95, sh = L.bagW * 0.28;
       sp.style.width = sw + 'px'; sp.style.height = sh + 'px';
-      sp.style.left = (h.x - sw / 2) + 'px'; sp.style.top = (h.y + L.bagW * 0.5) + 'px';
+      sp.style.left = (hm.x - sw / 2) + 'px'; sp.style.top = (hm.y + L.bagW * 0.5) + 'px';
     }
     bags.forEach(function (b) { place(b); });
   }
@@ -164,7 +257,7 @@
     if (b.loc === 'drag' || b.loc === 'gone') return;
     var cx, cy, w;
     if (b.loc === 'truck') {
-      var p = svgToPx(TRUCK_SLOTS[b.t][0], TRUCK_SLOTS[b.t][1]);
+      var p = svgToPx(b.truck, TRUCK_SLOTS[b.t][0], TRUCK_SLOTS[b.t][1]);
       cx = p.x; cy = p.y; w = 50 * L.s;
     } else {
       var h = L.homes[b.slot];
@@ -197,11 +290,10 @@
   function makeBag(slot) {
     var el = document.createElement('div');
     el.className = 'bag';
-    var color = COLORS[(Math.random() * COLORS.length) | 0];
-    el.innerHTML = bagSVG(color);
-    var rot = Math.round((Math.random() * 24 - 12));
+    el.innerHTML = bagSVG(COLORS[(Math.random() * COLORS.length) | 0]);
+    var rot = Math.round(Math.random() * 24 - 12);
     el.style.transform = 'rotate(' + rot + 'deg)';
-    var b = { el: el, slot: slot, loc: 'bottom', t: -1, rot: rot, drag: null };
+    var b = { el: el, slot: slot, loc: 'bottom', t: -1, truck: null, rot: rot, drag: null };
     stage.appendChild(el);
     bags.push(b);
     place(b);
@@ -223,15 +315,15 @@
     snd(function () { A.pop && A.pop(); });
   }
 
+  function bottomCount() {
+    return bags.filter(function (b) { return b.loc === 'bottom' || b.loc === 'drag'; }).length;
+  }
   // 下の画面が空になったら1秒後に補充
   function checkRefill() {
-    if (refillTimer) return;
-    var left = bags.filter(function (b) { return b.loc === 'bottom' || b.loc === 'drag'; }).length;
-    if (left > 0) return;
+    if (refillTimer || bottomCount() > 0) return;
     refillTimer = setTimeout(function () {
       refillTimer = null;
-      var again = bags.filter(function (b) { return b.loc === 'bottom' || b.loc === 'drag'; }).length;
-      if (again === 0) spawnSix();
+      if (bottomCount() === 0) spawnSix();
     }, 1000);
   }
 
@@ -239,6 +331,19 @@
   function inTop(x, y) {
     var T = L.T;
     return x >= T.left && x <= T.right && y >= T.top && y <= T.bottom;
+  }
+  // 離した場所にいちばん近い収集車
+  function nearestTruck(x, y) {
+    var best = null, bd = Infinity;
+    trucks.forEach(function (t) {
+      var d = (t.cx - x) * (t.cx - x) + (t.cy - y) * (t.cy - y);
+      if (d < bd) { bd = d; best = t; }
+    });
+    return best;
+  }
+  function showHot(x, y, on) {
+    var tg = on ? nearestTruck(x, y) : null;
+    trucks.forEach(function (t) { t.back.classList.toggle('hot', t === tg); });
   }
 
   function bindDrag(b) {
@@ -260,18 +365,23 @@
       if (!d || d.id !== e.pointerId) return;
       if (Math.abs(e.clientX - d.sx) + Math.abs(e.clientY - d.sy) > 10) d.moved = true;
       setBox(b, e.clientX - d.dx, e.clientY - d.dy, L.bagW);
-      stage.classList.toggle('hot', inTop(e.clientX, e.clientY));
-      svgBack.classList.toggle('hot', inTop(e.clientX, e.clientY));
+      showHot(e.clientX, e.clientY, inTop(e.clientX, e.clientY));
     });
     function end(e) {
       var d = b.drag;
       if (!d || d.id !== e.pointerId) return;
       b.drag = null;
-      svgBack.classList.remove('hot');
+      showHot(0, 0, false);
       try { el.releasePointerCapture(e.pointerId); } catch (x) {}
       var tap = !d.moved && (performance.now() - d.t0) < 500;
-      var drop = e.type === 'pointerup' && (tap || inTop(e.clientX, e.clientY));
-      if (drop) toTruck(b); else toHome(b);
+      var up = e.type === 'pointerup';
+      if (up && !tap && inTop(e.clientX, e.clientY)) {
+        toTruck(b, nearestTruck(e.clientX, e.clientY));
+      } else if (up && tap) {
+        toTruck(b, null);   // タップだけのときは、あいている収集車へ
+      } else {
+        toHome(b);
+      }
     }
     el.addEventListener('pointerup', end);
     el.addEventListener('pointercancel', end);
@@ -284,29 +394,37 @@
     place(b);
   }
 
-  function updateLamps() {
-    var n = truck.filter(Boolean).length;
-    for (var i = 0; i < 4; i++) {
-      var l = document.getElementById('lamp' + i);
-      l.setAttribute('fill', i < n ? '#ffc83d' : '#c9d3ee');
-    }
-    btn.classList.toggle('ready', n >= TRUCK_MAX && !busy);
+  function updateLamps(t) {
+    var n = t.slots.filter(Boolean).length;
+    t.lamps.forEach(function (l, i) { l.setAttribute('fill', i < n ? '#ffc83d' : '#c9d3ee'); });
+    t.btn.classList.toggle('ready', n >= TRUCK_MAX && !t.busy);
   }
 
-  function toTruck(b) {
-    var free = truck.indexOf(null);
-    if (busy || free < 0) {
+  function toTruck(b, t) {
+    if (!t) {
+      // タップ: 袋にいちばん近い、あいている収集車
+      var c = center(b), bd = Infinity;
+      trucks.forEach(function (x) {
+        if (x.busy || x.slots.indexOf(null) < 0) return;
+        var d = (x.cx - c.x) * (x.cx - c.x) + (x.cy - c.y) * (x.cy - c.y);
+        if (d < bd) { bd = d; t = x; }
+      });
+      if (!t) t = trucks[0];
+    }
+    var free = t.slots.indexOf(null);
+    if (t.busy || free < 0) {
       toHome(b);
-      if (free < 0) btn.animate([{ transform: 'scale(1)' }, { transform: 'scale(1.15)' }, { transform: 'scale(1)' }], { duration: 300 });
+      if (free < 0) t.btn.animate([{ transform: 'scale(1)' }, { transform: 'scale(1.15)' }, { transform: 'scale(1)' }], { duration: 300 });
       return;
     }
-    truck[free] = b;
+    t.slots[free] = b;
     b.t = free;
+    b.truck = t;
     b.loc = 'truck';
     b.el.classList.add('anim', 'intruck');
     b.el.style.zIndex = 2;
     place(b);
-    updateLamps();
+    updateLamps(t);
     snd(function () { A.pop && A.pop(); });
     checkRefill();
   }
@@ -314,10 +432,10 @@
   // ---- かきあげ板 ----
   function wait(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
 
-  function absorb(b) {
+  function absorb(b, t) {
     b.loc = 'gone';
     var c = center(b);
-    var tgt = svgToPx(180, 150);
+    var tgt = svgToPx(t, 180, 150);
     var dx = tgt.x - c.x, dy = tgt.y - c.y;
     b.el.classList.remove('anim');
     var a = b.el.animate([
@@ -330,40 +448,59 @@
     };
   }
 
-  async function press() {
-    if (busy) return;
-    busy = true;
-    var list = truck.filter(Boolean);
-    truck = [null, null, null, null];
-    updateLamps();
+  async function press(t) {
+    if (t.busy || t.dead) return;
+    t.busy = true;
+    var list = t.slots.filter(Boolean);
+    t.slots = [null, null, null, null];
+    updateLamps(t);
     snd(function () { A.noise && A.noise(); A.tone && A.tone(300, 0.7, 0.18, 0.4); });
     var down = Math.max(850, 250 + Math.max(list.length - 1, 0) * 90 + 650);
-    blade.animate([{ transform: 'translateY(0px)' }, { transform: 'translateY(66px)' }],
+    t.blade.animate([{ transform: 'translateY(0px)' }, { transform: 'translateY(66px)' }],
       { duration: down, easing: 'ease-in-out', fill: 'forwards' });
-    list.forEach(function (b, i) { setTimeout(function () { absorb(b); }, 250 + i * 90); });
+    list.forEach(function (b, i) { setTimeout(function () { if (!t.dead) absorb(b, t); }, 250 + i * 90); });
     await wait(down);
-    var up = blade.animate([{ transform: 'translateY(66px)' }, { transform: 'translateY(0px)' }],
+    if (t.dead) return;
+    t.blade.animate([{ transform: 'translateY(66px)' }, { transform: 'translateY(0px)' }],
       { duration: 500, easing: 'ease-in-out', fill: 'forwards' });
     await wait(500);
-    blade.getAnimations().forEach(function (a) { a.cancel(); });
-    [svgBack, svgFront].forEach(function (el) {
+    if (t.dead) return;
+    t.blade.getAnimations().forEach(function (a) { a.cancel(); });
+    [t.back, t.front].forEach(function (el) {
       el.animate([{ transform: 'translateY(0)' }, { transform: 'translateY(-5px)' }, { transform: 'translateY(0)' }],
         { duration: 260, easing: 'ease-out' });
     });
     snd(function () { A.tone && A.tone(523, 0.12, 0.2, 1); setTimeout(function () { A.tone && A.tone(784, 0.18, 0.2, 1); }, 130); });
-    busy = false;
-    updateLamps();
+    t.busy = false;
+    updateLamps(t);
     checkRefill();
   }
 
-  btn.addEventListener('pointerdown', function (e) {
-    e.preventDefault();
-    btn.classList.add('down');
-    press();
-  });
-  ['pointerup', 'pointercancel', 'pointerleave'].forEach(function (t) {
-    btn.addEventListener(t, function () { btn.classList.remove('down'); });
-  });
+  // ---- 保護者設定(左上を1.5秒長押し) ----
+  var panel = document.getElementById('panel');
+  var numRow = document.getElementById('numRow');
+  function renderNums() {
+    numRow.innerHTML = '';
+    for (var n = 1; n <= MAX_TRUCKS; n++) {
+      (function (n) {
+        var b = document.createElement('button');
+        b.className = 'num' + (n === nTrucks ? ' on' : '');
+        var t = '';
+        for (var k = 0; k < n; k++) t += '🚛';
+        b.innerHTML = n + '<small>' + t + '</small>';
+        b.addEventListener('click', function () {
+          if (n === nTrucks) return;
+          nTrucks = n; saveCount(); buildTrucks(); renderNums();
+        });
+        numRow.appendChild(b);
+      })(n);
+    }
+  }
+  function openPanel() { renderNums(); panel.hidden = false; }
+  document.getElementById('closeBtn').addEventListener('click', function () { panel.hidden = true; });
+  if (A.cornerButton) {
+    A.cornerButton({ corner: 'left', icon: '⚙️', label: '設定（長押し）', onHold: openPanel });
+  }
 
   // どこをタップしても反応(空きスペース)
   stage.addEventListener('pointerdown', function (e) {
@@ -374,9 +511,8 @@
 
   window.addEventListener('resize', layout);
   window.addEventListener('orientationchange', function () { setTimeout(layout, 100); });
-  layout();
+  buildTrucks();
   spawnSix();
-  updateLamps();
 })();
 </script>
 </body>
