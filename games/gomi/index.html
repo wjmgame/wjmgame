@@ -30,6 +30,7 @@
   .tBack { z-index: 1; }
   .tFront { z-index: 3; }
   .cavity { transition: stroke .15s; }
+  .body { transition: fill .4s; }
   .hot .cavity { stroke: #ffc83d; stroke-width: 8; }
   .spot { position: absolute; border-radius: 50%; background: rgba(35,48,90,.09); z-index: 0; pointer-events: none; }
   .bag { position: absolute; z-index: 2; touch-action: none; cursor: grab;
@@ -130,8 +131,8 @@
     '<ellipse cx="180" cy="270" rx="150" ry="8" fill="rgba(35,48,90,.18)"/>' +
     '<rect x="165" y="2" width="30" height="10" rx="3" fill="#8a93b5"/>' +
     '<ellipse class="beacon" cx="180" cy="8" rx="15" ry="9" fill="#ffc83d" stroke="#c98f00" stroke-width="3"/>' +
-    '<rect x="50" y="16" width="260" height="196" rx="18" fill="#4ccb8a" stroke="#2f9e68" stroke-width="5"/>' +
-    '<path d="M70 34H290M70 44H290" stroke="#2f9e68" stroke-width="3" stroke-linecap="round" opacity=".6"/>' +
+    '<rect class="body" x="50" y="16" width="260" height="196" rx="18" fill="#4ccb8a" stroke="rgba(35,48,90,.35)" stroke-width="5"/>' +
+    '<path d="M70 34H290M70 44H290" stroke="rgba(35,48,90,.3)" stroke-width="3" stroke-linecap="round"/>' +
     '<circle class="lamp" cx="135" cy="76" r="9" fill="#c9d3ee" stroke="#23305a" stroke-width="3"/>' +
     '<circle class="lamp" cx="165" cy="76" r="9" fill="#c9d3ee" stroke="#23305a" stroke-width="3"/>' +
     '<circle class="lamp" cx="195" cy="76" r="9" fill="#c9d3ee" stroke="#23305a" stroke-width="3"/>' +
@@ -153,6 +154,12 @@
     '<rect x="86" y="108" width="188" height="22" rx="6" fill="url(#stripes)" opacity=".3"/>' +
     '</g>';
   var BTN_SVG = '<svg viewBox="0 0 48 48"><path d="M12 12l12 12 12-12M12 26l12 12 12-12" stroke="#fff" stroke-width="6" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+
+  function pickColor(prev) {
+    var c;
+    do { c = COLORS[(Math.random() * COLORS.length) | 0]; } while (c === prev && COLORS.length > 1);
+    return c;
+  }
 
   function svgEl(cls, inner) {
     var s = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
@@ -182,6 +189,9 @@
       t.btn.setAttribute('aria-label', 'かきあげ');
       t.btn.innerHTML = BTN_SVG;
       t.blade = t.front.querySelector('.blade');
+      t.body = t.back.querySelector('.body');
+      t.color = pickColor(null);
+      t.body.style.fill = t.color;
       t.lamps = Array.prototype.slice.call(t.back.querySelectorAll('.lamp'));
       stage.appendChild(t.back); stage.appendChild(t.front); stage.appendChild(t.btn);
       bindButton(t);
@@ -454,13 +464,31 @@
     var list = t.slots.filter(Boolean);
     t.slots = [null, null, null, null];
     updateLamps(t);
-    snd(function () { A.noise && A.noise(); A.tone && A.tone(300, 0.7, 0.18, 0.4); });
+    t.color = pickColor(t.color);
+    t.body.style.fill = t.color;
     var down = Math.max(850, 250 + Math.max(list.length - 1, 0) * 90 + 650);
+    // グイーン: モーターのうなりが上がっていく
+    snd(function () {
+      var d = down / 1000;
+      A.noise && A.noise();
+      if (A.tone) {
+        A.tone(110, d, 0.16, 2.8);
+        A.tone(113, d, 0.09, 2.8);
+        A.tone(220, d, 0.07, 2.8);
+      }
+    });
     t.blade.animate([{ transform: 'translateY(0px)' }, { transform: 'translateY(66px)' }],
       { duration: down, easing: 'ease-in-out', fill: 'forwards' });
     list.forEach(function (b, i) { setTimeout(function () { if (!t.dead) absorb(b, t); }, 250 + i * 90); });
     await wait(down);
     if (t.dead) return;
+    // ボン: 板が奥に当たった重い音
+    snd(function () {
+      A.noise && A.noise();
+      if (A.tone) { A.tone(110, 0.35, 0.35, 0.35); A.tone(55, 0.45, 0.35, 0.5); }
+    });
+    // もどるときは、低くなるうなり
+    snd(function () { A.tone && A.tone(260, 0.5, 0.08, 0.45); });
     t.blade.animate([{ transform: 'translateY(66px)' }, { transform: 'translateY(0px)' }],
       { duration: 500, easing: 'ease-in-out', fill: 'forwards' });
     await wait(500);
@@ -470,7 +498,6 @@
       el.animate([{ transform: 'translateY(0)' }, { transform: 'translateY(-5px)' }, { transform: 'translateY(0)' }],
         { duration: 260, easing: 'ease-out' });
     });
-    snd(function () { A.tone && A.tone(523, 0.12, 0.2, 1); setTimeout(function () { A.tone && A.tone(784, 0.18, 0.2, 1); }, 130); });
     t.busy = false;
     updateLamps(t);
     checkRefill();
