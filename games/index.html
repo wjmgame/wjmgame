@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<title>ゴミしゅうしゅうしゃ</title>
+<meta name="game-title" content="ゴミしゅうしゅうしゃ">
+<meta name="game-icon" content="🚛">
+<meta name="game-color" content="#4ccb8a">
+<meta name="game-order" content="100">
+<script src="../../shared/common.js"></script>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #cfeeff; touch-action: none;
+    -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent;
+    font-family: -apple-system, "Hiragino Sans", sans-serif; }
+  #stage { position: fixed; inset: 0; overflow: hidden; }
+  .pane { position: absolute; box-sizing: border-box; }
+  #pTop { background: linear-gradient(#bfe6fa 0%, #eaf8ff 70%, #c9cfdc 70%, #b4bccd 100%); }
+  #pBot { background: #fff1c9;
+    background-image: radial-gradient(rgba(35,48,90,.07) 2px, transparent 2px); background-size: 26px 26px; }
+  @media (orientation: portrait) {
+    #pTop { left: 0; top: 0; width: 100%; height: 50%; }
+    #pBot { left: 0; top: 50%; width: 100%; height: 50%; border-top: 6px solid rgba(35,48,90,.18); }
+  }
+  @media (orientation: landscape) {
+    #pTop { left: 50%; top: 0; width: 50%; height: 100%; }
+    #pBot { left: 0; top: 0; width: 50%; height: 100%; border-right: 6px solid rgba(35,48,90,.18); }
+  }
+  .truck { position: absolute; pointer-events: none; }
+  #svgBack { z-index: 1; }
+  #svgFront { z-index: 3; }
+  #cavity { transition: stroke .15s; }
+  .hot #cavity { stroke: #ffc83d; stroke-width: 8; }
+  .spot { position: absolute; border-radius: 50%; background: rgba(35,48,90,.09); z-index: 0; pointer-events: none; }
+  .bag { position: absolute; z-index: 2; touch-action: none; cursor: grab;
+    filter: drop-shadow(0 4px 3px rgba(35,48,90,.28)); will-change: left, top; }
+  .bag.anim { transition: left .28s cubic-bezier(.3,1.4,.5,1), top .28s cubic-bezier(.3,1.4,.5,1), width .28s, height .28s; }
+  .bag svg { width: 100%; height: 100%; display: block; pointer-events: none; }
+  .bag.intruck { pointer-events: none; }
+  #btn { position: absolute; z-index: 5; border: 0; padding: 0; border-radius: 50%; background: #ff7a6b;
+    box-shadow: 0 7px 0 #c94d40, 0 10px 14px rgba(35,48,90,.3); touch-action: none; cursor: pointer;
+    display: flex; align-items: center; justify-content: center; transition: transform .08s, box-shadow .08s; }
+  #btn:active, #btn.down { transform: translateY(5px); box-shadow: 0 2px 0 #c94d40, 0 4px 8px rgba(35,48,90,.3); }
+  #btn svg { width: 56%; height: 56%; pointer-events: none; }
+  #btn.ready { animation: pulse .7s ease-in-out infinite alternate; }
+  @keyframes pulse { from { filter: brightness(1); } to { filter: brightness(1.18) drop-shadow(0 0 10px #ffc83d); } }
+  #beacon { animation: blink 1s steps(2) infinite; }
+  @keyframes blink { 50% { opacity: .45; } }
+</style>
+</head>
+<body>
+<div id="stage">
+  <div class="pane" id="pTop"></div>
+  <div class="pane" id="pBot"></div>
+
+  <svg class="truck" id="svgBack" viewBox="0 0 360 280" xmlns="http://www.w3.org/2000/svg">
+    <ellipse cx="180" cy="270" rx="150" ry="8" fill="rgba(35,48,90,.18)"/>
+    <rect x="165" y="2" width="30" height="10" rx="3" fill="#8a93b5"/>
+    <ellipse id="beacon" cx="180" cy="8" rx="15" ry="9" fill="#ffc83d" stroke="#c98f00" stroke-width="3"/>
+    <rect x="50" y="16" width="260" height="196" rx="18" fill="#4ccb8a" stroke="#2f9e68" stroke-width="5"/>
+    <path d="M70 34H290M70 44H290" stroke="#2f9e68" stroke-width="3" stroke-linecap="round" opacity=".6"/>
+    <circle id="lamp0" cx="135" cy="76" r="9" fill="#c9d3ee" stroke="#23305a" stroke-width="3"/>
+    <circle id="lamp1" cx="165" cy="76" r="9" fill="#c9d3ee" stroke="#23305a" stroke-width="3"/>
+    <circle id="lamp2" cx="195" cy="76" r="9" fill="#c9d3ee" stroke="#23305a" stroke-width="3"/>
+    <circle id="lamp3" cx="225" cy="76" r="9" fill="#c9d3ee" stroke="#23305a" stroke-width="3"/>
+    <rect id="cavity" x="80" y="105" width="200" height="95" rx="10" fill="#2b3350" stroke="#23305a" stroke-width="6"/>
+    <rect x="62" y="120" width="14" height="48" rx="5" fill="#ff7a6b" stroke="#c94d40" stroke-width="3"/>
+    <rect x="284" y="120" width="14" height="48" rx="5" fill="#ff7a6b" stroke="#c94d40" stroke-width="3"/>
+    <rect x="68" y="198" width="224" height="14" rx="5" fill="#8a93b5" stroke="#23305a" stroke-width="3"/>
+    <rect x="58" y="214" width="244" height="16" rx="6" fill="#23305a"/>
+    <rect x="152" y="216" width="56" height="12" rx="3" fill="#fff"/>
+    <rect x="68" y="226" width="54" height="46" rx="12" fill="#23305a"/>
+    <rect x="238" y="226" width="54" height="46" rx="12" fill="#23305a"/>
+    <rect x="80" y="238" width="30" height="22" rx="6" fill="#8a93b5"/>
+    <rect x="250" y="238" width="30" height="22" rx="6" fill="#8a93b5"/>
+  </svg>
+
+  <svg class="truck" id="svgFront" viewBox="0 0 360 280" xmlns="http://www.w3.org/2000/svg">
+    <defs>
+      <pattern id="stripes" width="14" height="14" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">
+        <rect width="7" height="14" fill="#23305a"/>
+      </pattern>
+    </defs>
+    <g id="blade">
+      <rect x="170" y="98" width="20" height="12" rx="3" fill="#8a93b5"/>
+      <rect x="86" y="108" width="188" height="22" rx="6" fill="#ffc83d" stroke="#c98f00" stroke-width="3"/>
+      <rect x="86" y="108" width="188" height="22" rx="6" fill="url(#stripes)" opacity=".3"/>
+    </g>
+  </svg>
+
+  <button id="btn" aria-label="かきあげ">
+    <svg viewBox="0 0 48 48"><path d="M12 12l12 12 12-12M12 26l12 12 12-12" stroke="#fff" stroke-width="6" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>
+  </button>
+</div>
+
+<script>
+(function () {
+  var A = window.Asobo || {};
+  function snd(f) { try { f(); } catch (e) {} }
+
+  var VBW = 360, VBH = 280;
+  var TRUCK_SLOTS = [[110,166],[152,160],[194,166],[236,160]]; // トラックの中(SVG座標)
+  var TRUCK_MAX = 4;
+  var COLORS = ['#6c7bff', '#4ccb8a', '#ff7a6b', '#ffc83d', '#b08cff', '#5ec8e8'];
+
+  var stage = document.getElementById('stage');
+  var pTop = document.getElementById('pTop');
+  var pBot = document.getElementById('pBot');
+  var svgBack = document.getElementById('svgBack');
+  var svgFront = document.getElementById('svgFront');
+  var blade = document.getElementById('blade');
+  var btn = document.getElementById('btn');
+
+  var L = { T: null, B: null, s: 1, ox: 0, oy: 0, bagW: 80, homes: [] };
+  var bags = [];                       // 生きている袋
+  var truck = [null, null, null, null]; // トラックの中の袋
+  var busy = false;
+  var refillTimer = null;
+  var spots = [];
+  for (var i = 0; i < 6; i++) {
+    var sp = document.createElement('div');
+    sp.className = 'spot';
+    stage.appendChild(sp);
+    spots.push(sp);
+  }
+
+  function svgToPx(x, y) { return { x: L.ox + x * L.s, y: L.oy + y * L.s }; }
+
+  // ---- レイアウト(位置と大きさだけ直す。作り直さない) ----
+  function layout() {
+    var T = pTop.getBoundingClientRect(), B = pBot.getBoundingClientRect();
+    L.T = T; L.B = B;
+    var m = Math.min(T.width, T.height);
+    var btnS = Math.max(56, Math.min(110, m * 0.2));
+    var topPad = 36, sidePad = 8;
+    var ax = T.left + sidePad, ay = T.top + topPad;
+    var aw = T.width - sidePad * 2, ah = T.height - topPad - btnS - 22;
+    L.s = Math.max(0.1, Math.min(aw / VBW, ah / VBH));
+    L.ox = ax + (aw - VBW * L.s) / 2;
+    L.oy = ay + (ah - VBH * L.s) / 2;
+    [svgBack, svgFront].forEach(function (el) {
+      el.style.left = L.ox + 'px'; el.style.top = L.oy + 'px';
+      el.style.width = VBW * L.s + 'px'; el.style.height = VBH * L.s + 'px';
+    });
+    btn.style.width = btn.style.height = btnS + 'px';
+    btn.style.left = (T.left + T.width / 2 - btnS / 2) + 'px';
+    btn.style.top = (T.top + T.height - btnS - 14) + 'px';
+
+    var pad = 10, cw = (B.width - pad * 2) / 3, ch = (B.height - pad * 2) / 2;
+    L.bagW = Math.min(cw * 0.8, (ch * 0.8) / 1.1);
+    L.homes = [];
+    for (var i = 0; i < 6; i++) {
+      var col = i % 3, row = (i / 3) | 0;
+      var h = { x: B.left + pad + cw * (col + 0.5), y: B.top + pad + ch * (row + 0.5) };
+      L.homes.push(h);
+      var sp = spots[i], sw = L.bagW * 0.95, sh = L.bagW * 0.28;
+      sp.style.width = sw + 'px'; sp.style.height = sh + 'px';
+      sp.style.left = (h.x - sw / 2) + 'px'; sp.style.top = (h.y + L.bagW * 0.5) + 'px';
+    }
+    bags.forEach(function (b) { place(b); });
+  }
+
+  function place(b) {
+    if (b.loc === 'drag' || b.loc === 'gone') return;
+    var cx, cy, w;
+    if (b.loc === 'truck') {
+      var p = svgToPx(TRUCK_SLOTS[b.t][0], TRUCK_SLOTS[b.t][1]);
+      cx = p.x; cy = p.y; w = 50 * L.s;
+    } else {
+      var h = L.homes[b.slot];
+      cx = h.x; cy = h.y; w = L.bagW;
+    }
+    setBox(b, cx, cy, w);
+  }
+  function setBox(b, cx, cy, w) {
+    var h = w * 1.1;
+    b.el.style.width = w + 'px'; b.el.style.height = h + 'px';
+    b.el.style.left = (cx - w / 2) + 'px'; b.el.style.top = (cy - h / 2) + 'px';
+  }
+  function center(b) {
+    var r = b.el.getBoundingClientRect();
+    return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+  }
+
+  // ---- ゴミ袋 ----
+  function bagSVG(color) {
+    return '<svg viewBox="0 0 100 110" xmlns="http://www.w3.org/2000/svg">' +
+      '<path d="M38 34 L30 10 Q42 12 48 32Z" fill="' + color + '" stroke="rgba(35,48,90,.35)" stroke-width="2.5" stroke-linejoin="round"/>' +
+      '<path d="M62 34 L70 10 Q58 12 52 32Z" fill="' + color + '" stroke="rgba(35,48,90,.35)" stroke-width="2.5" stroke-linejoin="round"/>' +
+      '<path d="M20 42 Q6 78 24 98 Q50 110 76 98 Q94 78 80 42 Q66 30 50 30 Q34 30 20 42Z" fill="' + color + '" stroke="rgba(35,48,90,.35)" stroke-width="3" stroke-linejoin="round"/>' +
+      '<ellipse cx="32" cy="55" rx="7" ry="13" fill="#fff" opacity=".3" transform="rotate(15 32 55)"/>' +
+      '<circle cx="38" cy="68" r="4.5" fill="#23305a"/><circle cx="62" cy="68" r="4.5" fill="#23305a"/>' +
+      '<path d="M40 80 Q50 90 60 80" stroke="#23305a" stroke-width="3.5" fill="none" stroke-linecap="round"/>' +
+      '</svg>';
+  }
+
+  function makeBag(slot) {
+    var el = document.createElement('div');
+    el.className = 'bag';
+    var color = COLORS[(Math.random() * COLORS.length) | 0];
+    el.innerHTML = bagSVG(color);
+    var rot = Math.round((Math.random() * 24 - 12));
+    el.style.transform = 'rotate(' + rot + 'deg)';
+    var b = { el: el, slot: slot, loc: 'bottom', t: -1, rot: rot, drag: null };
+    stage.appendChild(el);
+    bags.push(b);
+    place(b);
+    bindDrag(b);
+    return b;
+  }
+
+  function spawnSix() {
+    for (var i = 0; i < 6; i++) {
+      (function (i) {
+        var b = makeBag(i);
+        b.el.animate([
+          { transform: 'rotate(' + b.rot + 'deg) scale(.2)', opacity: 0 },
+          { transform: 'rotate(' + b.rot + 'deg) scale(1.12)', opacity: 1, offset: 0.7 },
+          { transform: 'rotate(' + b.rot + 'deg) scale(1)', opacity: 1 }
+        ], { duration: 420, delay: i * 50, easing: 'ease-out', fill: 'backwards' });
+      })(i);
+    }
+    snd(function () { A.pop && A.pop(); });
+  }
+
+  // 下の画面が空になったら1秒後に補充
+  function checkRefill() {
+    if (refillTimer) return;
+    var left = bags.filter(function (b) { return b.loc === 'bottom' || b.loc === 'drag'; }).length;
+    if (left > 0) return;
+    refillTimer = setTimeout(function () {
+      refillTimer = null;
+      var again = bags.filter(function (b) { return b.loc === 'bottom' || b.loc === 'drag'; }).length;
+      if (again === 0) spawnSix();
+    }, 1000);
+  }
+
+  // ---- ドラッグ ----
+  function inTop(x, y) {
+    var T = L.T;
+    return x >= T.left && x <= T.right && y >= T.top && y <= T.bottom;
+  }
+
+  function bindDrag(b) {
+    var el = b.el;
+    el.addEventListener('pointerdown', function (e) {
+      if (b.loc !== 'bottom' || b.drag) return;
+      e.preventDefault();
+      try { el.setPointerCapture(e.pointerId); } catch (x) {}
+      var c = center(b);
+      b.drag = { id: e.pointerId, dx: e.clientX - c.x, dy: e.clientY - c.y,
+        sx: e.clientX, sy: e.clientY, moved: false, t0: performance.now() };
+      b.loc = 'drag';
+      el.classList.remove('anim');
+      el.style.zIndex = 10;
+      snd(function () { A.tone && A.tone(660, 0.07, 0.12, 1); });
+    });
+    el.addEventListener('pointermove', function (e) {
+      var d = b.drag;
+      if (!d || d.id !== e.pointerId) return;
+      if (Math.abs(e.clientX - d.sx) + Math.abs(e.clientY - d.sy) > 10) d.moved = true;
+      setBox(b, e.clientX - d.dx, e.clientY - d.dy, L.bagW);
+      stage.classList.toggle('hot', inTop(e.clientX, e.clientY));
+      svgBack.classList.toggle('hot', inTop(e.clientX, e.clientY));
+    });
+    function end(e) {
+      var d = b.drag;
+      if (!d || d.id !== e.pointerId) return;
+      b.drag = null;
+      svgBack.classList.remove('hot');
+      try { el.releasePointerCapture(e.pointerId); } catch (x) {}
+      var tap = !d.moved && (performance.now() - d.t0) < 500;
+      var drop = e.type === 'pointerup' && (tap || inTop(e.clientX, e.clientY));
+      if (drop) toTruck(b); else toHome(b);
+    }
+    el.addEventListener('pointerup', end);
+    el.addEventListener('pointercancel', end);
+  }
+
+  function toHome(b) {
+    b.loc = 'bottom';
+    b.el.classList.add('anim');
+    b.el.style.zIndex = 2;
+    place(b);
+  }
+
+  function updateLamps() {
+    var n = truck.filter(Boolean).length;
+    for (var i = 0; i < 4; i++) {
+      var l = document.getElementById('lamp' + i);
+      l.setAttribute('fill', i < n ? '#ffc83d' : '#c9d3ee');
+    }
+    btn.classList.toggle('ready', n >= TRUCK_MAX && !busy);
+  }
+
+  function toTruck(b) {
+    var free = truck.indexOf(null);
+    if (busy || free < 0) {
+      toHome(b);
+      if (free < 0) btn.animate([{ transform: 'scale(1)' }, { transform: 'scale(1.15)' }, { transform: 'scale(1)' }], { duration: 300 });
+      return;
+    }
+    truck[free] = b;
+    b.t = free;
+    b.loc = 'truck';
+    b.el.classList.add('anim', 'intruck');
+    b.el.style.zIndex = 2;
+    place(b);
+    updateLamps();
+    snd(function () { A.pop && A.pop(); });
+    checkRefill();
+  }
+
+  // ---- かきあげ板 ----
+  function wait(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+
+  function absorb(b) {
+    b.loc = 'gone';
+    var c = center(b);
+    var tgt = svgToPx(180, 150);
+    var dx = tgt.x - c.x, dy = tgt.y - c.y;
+    b.el.classList.remove('anim');
+    var a = b.el.animate([
+      { transform: 'translate(0px,0px) rotate(' + b.rot + 'deg) scale(1)', opacity: 1 },
+      { transform: 'translate(' + dx + 'px,' + dy + 'px) rotate(' + (b.rot + 40) + 'deg) scale(.15)', opacity: 0 }
+    ], { duration: 650, easing: 'ease-in', fill: 'forwards' });
+    a.onfinish = function () {
+      if (b.el.parentNode) b.el.parentNode.removeChild(b.el);
+      var k = bags.indexOf(b); if (k >= 0) bags.splice(k, 1);
+    };
+  }
+
+  async function press() {
+    if (busy) return;
+    busy = true;
+    var list = truck.filter(Boolean);
+    truck = [null, null, null, null];
+    updateLamps();
+    snd(function () { A.noise && A.noise(); A.tone && A.tone(300, 0.7, 0.18, 0.4); });
+    var down = Math.max(850, 250 + Math.max(list.length - 1, 0) * 90 + 650);
+    blade.animate([{ transform: 'translateY(0px)' }, { transform: 'translateY(66px)' }],
+      { duration: down, easing: 'ease-in-out', fill: 'forwards' });
+    list.forEach(function (b, i) { setTimeout(function () { absorb(b); }, 250 + i * 90); });
+    await wait(down);
+    var up = blade.animate([{ transform: 'translateY(66px)' }, { transform: 'translateY(0px)' }],
+      { duration: 500, easing: 'ease-in-out', fill: 'forwards' });
+    await wait(500);
+    blade.getAnimations().forEach(function (a) { a.cancel(); });
+    [svgBack, svgFront].forEach(function (el) {
+      el.animate([{ transform: 'translateY(0)' }, { transform: 'translateY(-5px)' }, { transform: 'translateY(0)' }],
+        { duration: 260, easing: 'ease-out' });
+    });
+    snd(function () { A.tone && A.tone(523, 0.12, 0.2, 1); setTimeout(function () { A.tone && A.tone(784, 0.18, 0.2, 1); }, 130); });
+    busy = false;
+    updateLamps();
+    checkRefill();
+  }
+
+  btn.addEventListener('pointerdown', function (e) {
+    e.preventDefault();
+    btn.classList.add('down');
+    press();
+  });
+  ['pointerup', 'pointercancel', 'pointerleave'].forEach(function (t) {
+    btn.addEventListener(t, function () { btn.classList.remove('down'); });
+  });
+
+  // どこをタップしても反応(空きスペース)
+  stage.addEventListener('pointerdown', function (e) {
+    if (e.target === stage || e.target === pTop || e.target === pBot) {
+      snd(function () { A.tone && A.tone(440 + Math.random() * 300, 0.06, 0.08, 1); });
+    }
+  });
+
+  window.addEventListener('resize', layout);
+  window.addEventListener('orientationchange', function () { setTimeout(layout, 100); });
+  layout();
+  spawnSix();
+  updateLamps();
+})();
+</script>
+</body>
+</html>
