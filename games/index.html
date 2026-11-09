@@ -1,0 +1,725 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<title>しゅうりこうじょう</title>
+<meta name="game-title" content="しゅうりこうじょう">
+<meta name="game-icon" content="🔧">
+<meta name="game-color" content="#8e7cff">
+<meta name="game-order" content="110">
+<script src="../../shared/common.js"></script>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #cfeeff; touch-action: none;
+    -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent;
+    font-family: -apple-system, "Hiragino Sans", sans-serif; color: #23305a; }
+  #stage { position: fixed; inset: 0; overflow: hidden; --car: #ff7a6b; }
+  .pane { position: absolute; box-sizing: border-box; }
+  #pTop { background: linear-gradient(#bfe6fa 0%, #eaf8ff 62%, #cfd5e2 62%, #b4bccd 100%); }
+  #pBot { background: #f3efe6;
+    background-image: radial-gradient(rgba(35,48,90,.07) 2px, transparent 2px); background-size: 26px 26px; }
+  @media (orientation: portrait) {
+    #pTop { left: 0; top: 0; width: 100%; height: 50%; }
+    #pBot { left: 0; top: 50%; width: 100%; height: 50%; border-top: 6px solid rgba(35,48,90,.18); }
+  }
+  @media (orientation: landscape) {
+    #pTop { left: 50%; top: 0; width: 50%; height: 100%; }
+    #pBot { left: 0; top: 0; width: 50%; height: 100%; border-right: 6px solid rgba(35,48,90,.18); }
+  }
+  #carLayer { position: absolute; z-index: 1; overflow: hidden; pointer-events: none; }
+  .carSvg { position: absolute; pointer-events: none; overflow: visible; }
+  .carSvg .body, .carSvg .lidr { fill: var(--car); }
+  .hit { fill: transparent; pointer-events: none; cursor: pointer; }
+  .hit.on { pointer-events: all; }
+  .wcont, .glassg, .tankIn { transform-box: fill-box; transform-origin: center; }
+  .lid { transform-box: fill-box; transform-origin: left center; transition: transform .25s; }
+  .hint { animation: hint 1s ease-in-out infinite; }
+  @keyframes hint { 50% { opacity: .25; } }
+  .tankIn { animation: bob 1.1s ease-in-out infinite alternate; }
+  @keyframes bob { to { transform: translateY(-5px); } }
+
+  .cell { position: absolute; z-index: 0; border-radius: 22px; box-sizing: border-box; border: 3px dashed rgba(35,48,90,.12); }
+  #cGlass { background: rgba(143,211,244,.35); }
+  #cTire { background: rgba(35,48,90,.09); }
+  #cNozzle { background: rgba(255,122,107,.22); }
+  #cSpray { background: rgba(255,200,61,.28); }
+  #pump { position: absolute; z-index: 0; pointer-events: none; }
+  .tool { position: absolute; z-index: 2; touch-action: none; cursor: grab;
+    filter: drop-shadow(0 4px 3px rgba(35,48,90,.28)); }
+  .tool.anim { transition: left .28s cubic-bezier(.3,1.4,.5,1), top .28s cubic-bezier(.3,1.4,.5,1), width .28s, height .28s; }
+  .tool svg { width: 100%; height: 100%; display: block; pointer-events: none; overflow: visible; }
+  #hose { position: absolute; left: 0; top: 0; width: 100%; height: 100%; z-index: 9; pointer-events: none; }
+  .fx { position: absolute; z-index: 8; pointer-events: none; border-radius: 50%; }
+</style>
+</head>
+<body>
+<div id="stage">
+  <div class="pane" id="pTop"></div>
+  <div class="pane" id="pBot"></div>
+  <div class="cell" id="cGlass"></div>
+  <div class="cell" id="cTire"></div>
+  <div class="cell" id="cNozzle"></div>
+  <div class="cell" id="cSpray"></div>
+  <svg id="pump" viewBox="0 0 200 200" xmlns="http://www.w3.org/2000/svg">
+    <rect x="108" y="172" width="84" height="10" rx="3" fill="#8a93b5"/>
+    <rect x="118" y="28" width="68" height="146" rx="10" fill="#ff7a6b" stroke="#c94d40" stroke-width="4"/>
+    <rect x="112" y="22" width="80" height="10" rx="4" fill="#c94d40"/>
+    <rect x="128" y="40" width="48" height="22" rx="4" fill="#23305a"/>
+    <rect x="132" y="47" width="26" height="8" rx="2" fill="#4ccb8a"/>
+    <rect x="118" y="150" width="68" height="10" fill="#fff" opacity=".5"/>
+    <rect x="108" y="118" width="34" height="14" rx="5" fill="#23305a"/>
+    <circle cx="165" cy="58" r="5" fill="#1b1b25"/>
+  </svg>
+  <div id="carLayer"></div>
+  <svg id="hose"><path id="hosePath" d="M0 0" fill="none" stroke="#1b1b25" stroke-width="6" stroke-linecap="round"/></svg>
+</div>
+
+<script>
+(function () {
+  var A = window.Asobo || {};
+  function snd(f) { try { f(); } catch (e) {} }
+  var NS = 'http://www.w3.org/2000/svg';
+
+  var VBW = 480, VBH = 300, CAR_Y = 50;
+  var COLORS = ['#6c7bff', '#4ccb8a', '#ff7a6b', '#ffc83d', '#b08cff', '#5ec8e8'];
+  var WD = ['M168 118 L181 80 L252 80 L252 118Z', 'M262 118 L262 80 L336 80 L358 118Z'];
+  var WC = [[212, 99], [300, 99]];
+  var WHEELS = [[95, 190], [385, 190]];
+  var NUTP = [[-12, -12], [12, -12], [12, 12], [-12, 12]];
+  var DOORC = [[210, 150], [304, 150]];
+  var PORT = [409, 141];
+  var SCR = ['M176 140 L196 134 L212 146 L238 136', 'M184 156 L206 150 L222 162 L244 152', 'M178 168 L198 163 L212 170 L236 164'];
+  var TIP = [0.09, 0.59], ATT = [0.82, 0.22];
+
+  var stage = document.getElementById('stage');
+  var pTop = document.getElementById('pTop');
+  var pBot = document.getElementById('pBot');
+  var carLayer = document.getElementById('carLayer');
+  var pump = document.getElementById('pump');
+  var hosePath = document.getElementById('hosePath');
+  var cellEls = { glass: document.getElementById('cGlass'), tire: document.getElementById('cTire'),
+    nozzle: document.getElementById('cNozzle'), spray: document.getElementById('cSpray') };
+
+  var L = { T: null, B: null, s: 1, ox: 0, oy: 0, homes: {}, sz: {}, hole: { x: 0, y: 0 } };
+  var cars = [];
+  var car = null;
+  var switching = false;
+  var lastColor = null;
+  var tools = {};
+  var noz = { mode: 'rest', x: 0, y: 0, w: 80, h: 80, raf: 0, last: 0, tw: null, holdT: 0, tickT: 0 };
+
+  function rb() { return Math.random() < 0.5; }
+  function pickColor(prev) {
+    var c;
+    do { c = COLORS[(Math.random() * COLORS.length) | 0]; } while (c === prev);
+    return c;
+  }
+  function svgToPx(x, y) { return { x: L.ox + x * L.s, y: L.oy + y * L.s }; }
+  function wheelPx(w) { return svgToPx(WHEELS[w.i][0], WHEELS[w.i][1] + CAR_Y); }
+  function winPx(w) { return svgToPx(WC[w.i][0], WC[w.i][1] + CAR_Y); }
+  function doorPx(d) { return svgToPx(DOORC[d.i][0], DOORC[d.i][1] + CAR_Y); }
+  function portPx() { return svgToPx(PORT[0], PORT[1] + CAR_Y); }
+  function inTop(x, y) { var T = L.T; return x >= T.left && x <= T.right && y >= T.top && y <= T.bottom; }
+  function wait(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+
+  // ================= 車 =================
+  function wheelContent(w) {
+    var nuts = '', i;
+    function hub(dy, sc) {
+      var s = '<g transform="translate(0,' + dy + ') scale(' + sc + ')"><circle r="22" fill="#c9d3ee" stroke="#8a93b5" stroke-width="3"/><circle r="6" fill="#8a93b5"/>';
+      for (i = 0; i < 4; i++) {
+        s += i < w.nuts
+          ? '<circle cx="' + NUTP[i][0] + '" cy="' + NUTP[i][1] + '" r="4.5" fill="#8a93b5" stroke="#23305a" stroke-width="2"/>'
+          : '<circle cx="' + NUTP[i][0] + '" cy="' + NUTP[i][1] + '" r="2.5" fill="#23305a"/>';
+      }
+      return s + '</g>';
+    }
+    if (w.st === 'flat') {
+      return '<ellipse cx="0" cy="8" rx="42" ry="28" fill="#23305a"/>' +
+        '<path d="M-30 8 Q0 -2 30 8" fill="none" stroke="#3b4670" stroke-width="3"/>' +
+        '<rect x="22" y="-6" width="4" height="14" rx="2" fill="#c9d3ee" transform="rotate(25 24 0)"/>' + hub(8, 0.85);
+    }
+    if (w.st === 'off') {
+      var st = '<circle class="hint" r="36" fill="none" stroke="#fff" stroke-width="3" stroke-dasharray="6 6"/>' +
+        '<circle r="15" fill="#8a93b5" stroke="#23305a" stroke-width="3"/>';
+      for (i = 0; i < 4; i++) st += '<circle cx="' + NUTP[i][0] * 0.6 + '" cy="' + NUTP[i][1] * 0.6 + '" r="2.5" fill="#c9d3ee"/>';
+      return st;
+    }
+    // good / new / done
+    return '<circle r="36" fill="#23305a"/><circle r="30" fill="none" stroke="#3b4670" stroke-width="3" stroke-dasharray="6 5"/>' + hub(0, 1);
+  }
+  function renderWheel(w) { w.cont.innerHTML = wheelContent(w); }
+
+  function renderWin(win) {
+    win.g.style.display = (win.st === 'ok' || win.st === 'broken' || win.st === 'falling') ? '' : 'none';
+    win.crack.style.display = (win.st === 'broken' || win.st === 'falling') ? '' : 'none';
+    win.gap.style.display = win.st === 'empty' ? '' : 'none';
+  }
+
+  function carMarkup() {
+    var s = '<g transform="translate(0,' + CAR_Y + ')">';
+    s += '<ellipse cx="240" cy="229" rx="215" ry="9" fill="rgba(35,48,90,.18)"/>';
+    s += '<path class="body" stroke="rgba(35,48,90,.35)" stroke-width="5" stroke-linejoin="round" d="M18 175 L18 152 Q18 136 40 132 L122 122 L152 82 Q158 72 172 70 L328 70 Q344 70 354 82 L388 122 L440 128 Q462 132 462 152 L462 175 Q462 190 446 190 L34 190 Q18 190 18 175Z"/>';
+    s += '<path d="M53 190 A42 42 0 0 1 137 190Z" fill="#2b3350"/><path d="M343 190 A42 42 0 0 1 427 190Z" fill="#2b3350"/>';
+    var i;
+    for (i = 0; i < 2; i++) {
+      s += '<path d="' + WD[i] + '" fill="#3a4468" stroke="rgba(35,48,90,.5)" stroke-width="3" stroke-linejoin="round"/>';
+      s += '<path class="gap gap' + i + ' hint" d="' + WD[i] + '" fill="none" stroke="#fff" stroke-width="3" stroke-dasharray="6 5" style="display:none"/>';
+      s += '<g class="glassg gl' + i + '"><path d="' + WD[i] + '" fill="#bfe6fa" stroke="rgba(35,48,90,.5)" stroke-width="3" stroke-linejoin="round"/>' +
+        '<g transform="translate(' + WC[i][0] + ',' + WC[i][1] + ')"><path d="M-20 16 L-6 -14 M-8 16 L6 -14" stroke="#fff" stroke-width="5" opacity=".6" stroke-linecap="round"/>' +
+        '<g class="crack"><path d="M-20 -14 L-4 0 L-14 14 M-4 0 L22 -4 L28 12 M-4 0 L6 -16" fill="none" stroke="#6b7390" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/>' +
+        '<path d="M-20 -14 L-4 0 L-14 14 M-4 0 L22 -4 L28 12 M-4 0 L6 -16" fill="none" stroke="#fff" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></g></g></g>';
+    }
+    s += '<path d="M160 122 V186 M258 122 V188 M352 122 V160" stroke="rgba(35,48,90,.4)" stroke-width="3" fill="none" stroke-linecap="round"/>';
+    s += '<rect x="232" y="132" width="18" height="6" rx="3" fill="rgba(35,48,90,.4)"/><rect x="326" y="132" width="18" height="6" rx="3" fill="rgba(35,48,90,.4)"/>';
+    for (i = 0; i < 2; i++) {
+      s += '<g transform="translate(' + (i ? 98 : 0) + ',0)">';
+      for (var l = 0; l < 3; l++) {
+        s += '<g class="sc sc' + i + '_' + l + '"><path d="' + SCR[l] + '" transform="translate(1.5,2)" fill="none" stroke="#5b6585" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>' +
+          '<path d="' + SCR[l] + '" fill="none" stroke="#f4f6ff" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"/></g>';
+      }
+      s += '</g>';
+    }
+    s += '<ellipse cx="34" cy="148" rx="14" ry="9" fill="#fff3b0" stroke="#c98f00" stroke-width="2"/>';
+    s += '<rect x="446" y="136" width="14" height="22" rx="5" fill="#ff7a6b" stroke="#c94d40" stroke-width="3"/>';
+    s += '<rect x="398" y="128" width="22" height="26" rx="4" fill="#2b3350" stroke="#23305a" stroke-width="3"/><circle cx="409" cy="141" r="6" fill="#8a93b5"/>';
+    s += '<g class="lid"><rect class="lidr" x="396" y="126" width="26" height="30" rx="5" stroke="rgba(35,48,90,.4)" stroke-width="3"/></g>';
+    s += '<g class="gauge" style="display:none"><rect x="380" y="92" width="76" height="16" rx="8" fill="#fff" stroke="#23305a" stroke-width="3"/><rect class="gbar" x="384" y="96" width="0" height="8" rx="4" fill="#ffc83d"/></g>';
+    for (i = 0; i < 2; i++) {
+      s += '<g class="wheel wheel' + i + '" transform="translate(' + WHEELS[i][0] + ',' + WHEELS[i][1] + ')"><g class="wcont"></g></g>';
+    }
+    for (i = 0; i < 2; i++) s += '<circle class="hit" data-k="w' + i + '" cx="' + WHEELS[i][0] + '" cy="' + WHEELS[i][1] + '" r="46"/>';
+    for (i = 0; i < 2; i++) s += '<path class="hit" data-k="g' + i + '" d="' + WD[i] + '"/>';
+    s += '<rect class="hit" data-k="f" x="384" y="114" width="50" height="52"/>';
+    s += '</g>';
+    s += '<g transform="translate(22,24)"><g class="tankIn">' +
+      '<rect x="0" y="16" width="54" height="58" rx="9" fill="#ff7a6b" stroke="#c94d40" stroke-width="4"/>' +
+      '<path d="M10 16 V8 Q10 4 14 4 H32 Q36 4 36 8 V16" fill="none" stroke="#c94d40" stroke-width="5" stroke-linecap="round"/>' +
+      '<rect x="38" y="6" width="14" height="12" rx="3" fill="#23305a"/>' +
+      '<path d="M27 30 Q39 46 27 58 Q15 46 27 30Z" fill="#fff"/></g></g>';
+    return s;
+  }
+
+  function makeCar() {
+    var color = pickColor(lastColor);
+    lastColor = color;
+    var svg = document.createElementNS(NS, 'svg');
+    svg.setAttribute('class', 'carSvg');
+    svg.setAttribute('viewBox', '0 0 ' + VBW + ' ' + VBH);
+    svg.style.setProperty('--car', color);
+    svg.innerHTML = carMarkup();
+    carLayer.appendChild(svg);
+    var c = { svg: svg, color: color, wheels: [], wins: [], doors: [], fuel: { st: 'closed', p: 0 }, done: false };
+    var flats = [rb(), rb()], broken = [rb(), rb()], scratch = [rb(), rb()];
+    for (var i = 0; i < 2; i++) {
+      var g = svg.querySelector('.wheel' + i);
+      var w = { i: i, g: g, cont: g.querySelector('.wcont'), st: flats[i] ? 'flat' : 'good', nuts: 4 };
+      c.wheels.push(w); renderWheel(w);
+      var win = { i: i, g: svg.querySelector('.gl' + i), gap: svg.querySelector('.gap' + i), crack: svg.querySelector('.gl' + i + ' .crack'), st: broken[i] ? 'broken' : 'ok' };
+      c.wins.push(win); renderWin(win);
+      var d = { i: i, rem: scratch[i] ? 3 : 0, layers: [0, 1, 2].map(function (l) { return svg.querySelector('.sc' + i + '_' + l); }) };
+      d.layers.forEach(function (el) { el.style.display = d.rem ? '' : 'none'; });
+      c.doors.push(d);
+    }
+    c.lid = svg.querySelector('.lid');
+    c.gauge = svg.querySelector('.gauge');
+    c.gbar = svg.querySelector('.gbar');
+    c.tank = svg.querySelector('.tankIn').parentNode;
+    svg.addEventListener('pointerdown', function (e) {
+      var h = e.target.closest && e.target.closest('.hit.on');
+      if (!h) return;
+      e.preventDefault();
+      carTap(c, h.getAttribute('data-k'));
+    });
+    cars.push(c);
+    refreshHits(c);
+    layout();
+    return c;
+  }
+
+  function refreshHits(c) {
+    var q = function (k) { return c.svg.querySelector('.hit[data-k="' + k + '"]'); };
+    c.wheels.forEach(function (w) { q('w' + w.i).classList.toggle('on', w.st === 'flat' || w.st === 'new'); });
+    c.wins.forEach(function (w) { q('g' + w.i).classList.toggle('on', w.st === 'broken'); });
+    q('f').classList.toggle('on', c.fuel.st === 'closed');
+  }
+
+  function carTap(c, k) {
+    if (switching || c !== car) return;
+    if (k === 'f') { openLid(c); return; }
+    if (k.charAt(0) === 'w') {
+      var w = c.wheels[+k.charAt(1)];
+      if (w.st === 'flat') removeNut(c, w); else if (w.st === 'new') addNut(c, w);
+    } else if (k.charAt(0) === 'g') {
+      var win = c.wins[+k.charAt(1)];
+      if (win.st === 'broken') breakGlass(c, win);
+    }
+  }
+
+  // ---- タイヤ ----
+  function flyNut(w, idx) {
+    var p = NUTP[idx], flat = w.st === 'flat';
+    var x = flat ? p[0] * 0.85 : p[0], y = flat ? p[1] * 0.85 + 8 : p[1];
+    var n = document.createElementNS(NS, 'circle');
+    n.setAttribute('cx', x); n.setAttribute('cy', y); n.setAttribute('r', 5);
+    n.setAttribute('fill', '#8a93b5'); n.setAttribute('stroke', '#23305a'); n.setAttribute('stroke-width', 2);
+    n.style.pointerEvents = 'none';
+    w.g.appendChild(n);
+    var a = n.animate([{ transform: 'translate(0px,0px)', opacity: 1 },
+      { transform: 'translate(' + (x * 2.4) + 'px,' + (46 + y) + 'px)', opacity: 0 }], { duration: 450, easing: 'ease-in' });
+    a.onfinish = function () { if (n.parentNode) n.parentNode.removeChild(n); };
+  }
+
+  function removeNut(c, w) {
+    w.nuts--;
+    flyNut(w, w.nuts);
+    renderWheel(w);
+    snd(function () { A.tone && A.tone(170, 0.07, 0.28, 0.6); A.pop && A.pop(); });
+    if (w.nuts <= 0) {
+      w.st = 'falling';
+      refreshHits(c);
+      var a = w.cont.animate([{ transform: 'translate(0px,0px) rotate(0deg)', opacity: 1 },
+        { transform: 'translate(-34px,70px) rotate(-120deg)', opacity: 0 }], { duration: 480, easing: 'ease-in', fill: 'forwards' });
+      snd(function () { A.tone && A.tone(120, 0.3, 0.3, 0.4); A.noise && A.noise(); });
+      a.onfinish = function () {
+        a.cancel();
+        w.st = 'off'; renderWheel(w); refreshHits(c);
+      };
+    }
+  }
+
+  function addNut(c, w) {
+    w.nuts++;
+    renderWheel(w);
+    snd(function () { A.tone && A.tone(260 + w.nuts * 90, 0.08, 0.25, 1.1); });
+    if (w.nuts >= 4) {
+      w.st = 'done'; renderWheel(w); refreshHits(c);
+      sparkle(wheelPx(w).x, wheelPx(w).y);
+      snd(function () { A.tone && A.tone(784, 0.15, 0.2, 1); });
+      checkDone(c);
+    }
+  }
+
+  function installTire(c, w) {
+    w.st = 'new'; w.nuts = 0;
+    renderWheel(w); refreshHits(c);
+    w.cont.animate([{ transform: 'scale(.4)', opacity: 0 }, { transform: 'scale(1.12)', opacity: 1, offset: 0.7 }, { transform: 'scale(1)', opacity: 1 }], { duration: 320, easing: 'ease-out' });
+    snd(function () { A.tone && A.tone(220, 0.12, 0.3, 1.6); });
+  }
+
+  // ---- ガラス ----
+  function breakGlass(c, win) {
+    win.st = 'falling';
+    refreshHits(c);
+    snd(function () { A.noise && A.noise(); A.tone && A.tone(900, 0.15, 0.2, 0.5); });
+    var a = win.g.animate([{ transform: 'translate(0px,0px)', opacity: 1 }, { transform: 'translate(0px,50px)', opacity: 0 }],
+      { duration: 400, easing: 'ease-in', fill: 'forwards' });
+    a.onfinish = function () { a.cancel(); win.st = 'empty'; renderWin(win); refreshHits(c); };
+  }
+  function installGlass(c, win) {
+    win.st = 'ok'; renderWin(win);
+    win.g.animate([{ transform: 'scale(.5)', opacity: 0 }, { transform: 'scale(1.1)', opacity: 1, offset: 0.7 }, { transform: 'scale(1)', opacity: 1 }], { duration: 300, easing: 'ease-out' });
+    snd(function () { A.tone && A.tone(700, 0.1, 0.2, 1.3); });
+    sparkle(winPx(win).x, winPx(win).y);
+    checkDone(c);
+  }
+
+  // ---- キズ ----
+  function sprayStep(c, d) {
+    if (d.rem <= 0) return false;
+    var layer = d.layers[d.rem - 1];
+    d.rem--;
+    layer.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 400, fill: 'forwards' });
+    var p = doorPx(d);
+    mist(p.x, p.y, c.color);
+    snd(function () { A.noise && A.noise(); A.tone && A.tone(2200, 0.15, 0.04, 1); });
+    if (d.rem === 0) { sparkle(p.x, p.y); checkDone(c); }
+    return true;
+  }
+
+  // ---- 給油 ----
+  function openLid(c) {
+    if (c.fuel.st !== 'closed') return;
+    c.fuel.st = 'open';
+    c.lid.style.transform = 'scale(.18,1)';
+    snd(function () { A.tone && A.tone(500, 0.06, 0.2, 1.4); });
+    refreshHits(c);
+  }
+  function finishFuel(c) {
+    c.fuel.st = 'done';
+    c.gbar.setAttribute('width', 68);
+    snd(function () { A.tone && A.tone(660, 0.12, 0.2, 1); setTimeout(function () { A.tone && A.tone(990, 0.2, 0.2, 1); }, 130); });
+    setTimeout(function () { c.lid.style.transform = ''; }, 350);
+    setTimeout(function () { c.gauge.style.display = 'none'; }, 800);
+    var a = c.tank.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 400, fill: 'forwards' });
+    a.onfinish = function () { c.tank.style.display = 'none'; };
+    refreshHits(c);
+    if (noz.mode === 'hold') nozReturn();
+    checkDone(c);
+  }
+  function updateFuel(dt) {
+    var c = car;
+    if (!c || switching || c.fuel.st === 'done') return;
+    var tip = { x: noz.x - noz.w / 2 + TIP[0] * noz.w, y: noz.y - noz.h / 2 + TIP[1] * noz.h };
+    var p = portPx();
+    var thr = Math.max(38, 34 * L.s);
+    var d = Math.hypot(tip.x - p.x, tip.y - p.y);
+    if (d < thr) {
+      if (c.fuel.st === 'closed') openLid(c);
+      c.fuel.st = 'filling';
+      c.gauge.style.display = '';
+      c.fuel.p = Math.min(1, c.fuel.p + dt / 2000);
+      c.gbar.setAttribute('width', 68 * c.fuel.p);
+      noz.tickT += dt;
+      if (noz.tickT > 140) { noz.tickT = 0; var f = 400 + c.fuel.p * 700; snd(function () { A.tone && A.tone(f, 0.08, 0.1, 1); }); }
+      if (c.fuel.p >= 1) finishFuel(c);
+    } else if (c.fuel.st === 'filling') {
+      c.fuel.st = 'open';
+    }
+  }
+
+  // ---- 完成 ----
+  function checkDone(c) {
+    if (c !== car || c.done || switching) return;
+    var ok = c.wheels.every(function (w) { return w.st === 'good' || w.st === 'done'; }) &&
+      c.wins.every(function (w) { return w.st === 'ok'; }) &&
+      c.doors.every(function (d) { return d.rem === 0; }) &&
+      c.fuel.st === 'done';
+    if (!ok) return;
+    c.done = true;
+    celebrate();
+  }
+
+  function celebrate() {
+    switching = true;
+    var T = L.T;
+    confetti(T.left + T.width / 2, T.top + T.height * 0.55);
+    var notes = [523, 659, 784, 1047, 1319];
+    notes.forEach(function (f, i) { setTimeout(function () { snd(function () { A.tone && A.tone(f, 0.18, 0.22, 1); }); }, i * 110); });
+    setTimeout(nextCar, 1700);
+  }
+
+  function nextCar() {
+    var old = car;
+    car = makeCar();
+    stage.style.setProperty('--car', car.color);
+    var W = Math.max(window.innerWidth, 600);
+    snd(function () { A.noise && A.noise(); A.tone && A.tone(80, 0.9, 0.15, 1.8); });
+    old.svg.animate([{ transform: 'translateX(0px)' }, { transform: 'translateX(' + (-W) + 'px)' }], { duration: 800, easing: 'ease-in', fill: 'forwards' });
+    car.svg.animate([{ transform: 'translateX(' + W + 'px)' }, { transform: 'translateX(0px)' }], { duration: 900, delay: 450, easing: 'ease-out', fill: 'backwards' });
+    setTimeout(function () {
+      if (old.svg.parentNode) old.svg.parentNode.removeChild(old.svg);
+      var k = cars.indexOf(old); if (k >= 0) cars.splice(k, 1);
+    }, 900);
+    setTimeout(function () { switching = false; }, 1400);
+  }
+
+  // ================= エフェクト =================
+  function fx(x, y, size, color) {
+    var d = document.createElement('div');
+    d.className = 'fx';
+    d.style.width = d.style.height = size + 'px';
+    d.style.left = (x - size / 2) + 'px'; d.style.top = (y - size / 2) + 'px';
+    d.style.background = color;
+    stage.appendChild(d);
+    return d;
+  }
+  function sparkle(x, y) {
+    for (var i = 0; i < 8; i++) {
+      var d = fx(x, y, 9, i % 2 ? '#ffc83d' : '#fff');
+      var ang = i / 8 * Math.PI * 2, r = 30 + Math.random() * 14;
+      var a = d.animate([{ transform: 'translate(0,0) scale(1)', opacity: 1 },
+        { transform: 'translate(' + Math.cos(ang) * r + 'px,' + Math.sin(ang) * r + 'px) scale(.2)', opacity: 0 }], { duration: 500, easing: 'ease-out' });
+      a.onfinish = (function (d) { return function () { d.remove(); }; })(d);
+    }
+  }
+  function mist(x, y, color) {
+    for (var i = 0; i < 9; i++) {
+      var d = fx(x + (Math.random() - .5) * 40, y + (Math.random() - .5) * 30, 14 + Math.random() * 12, color);
+      d.style.opacity = '.55';
+      var a = d.animate([{ transform: 'scale(.4)', opacity: .6 }, { transform: 'scale(1.6)', opacity: 0 }], { duration: 550 + Math.random() * 200, easing: 'ease-out' });
+      a.onfinish = (function (d) { return function () { d.remove(); }; })(d);
+    }
+  }
+  function confetti(x, y) {
+    for (var i = 0; i < 36; i++) {
+      var d = fx(x, y, 8 + Math.random() * 8, COLORS[i % COLORS.length]);
+      d.style.borderRadius = i % 3 ? '50%' : '2px';
+      var ang = Math.random() * Math.PI * 2, r = 80 + Math.random() * 170;
+      var a = d.animate([{ transform: 'translate(0,0) rotate(0deg)', opacity: 1 },
+        { transform: 'translate(' + Math.cos(ang) * r + 'px,' + (Math.sin(ang) * r * 0.7 + 90) + 'px) rotate(' + (Math.random() * 540) + 'deg)', opacity: 0 }],
+        { duration: 1200 + Math.random() * 400, easing: 'cubic-bezier(.2,.7,.4,1)' });
+      a.onfinish = (function (d) { return function () { d.remove(); }; })(d);
+    }
+  }
+
+  // ================= 道具 =================
+  var STAR = '<polygon points="84,4 87,13 97,13 89,19 92,29 84,23 76,29 79,19 71,13 81,13" fill="#ffc83d" stroke="#c98f00" stroke-width="1.5"/>';
+  function toolMarkup(kind) {
+    if (kind === 'tire') {
+      return '<svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="46" fill="#23305a"/><circle cx="50" cy="50" r="38" fill="none" stroke="#3b4670" stroke-width="3" stroke-dasharray="7 6"/>' +
+        '<circle cx="50" cy="50" r="26" fill="#c9d3ee" stroke="#8a93b5" stroke-width="3"/><circle cx="50" cy="50" r="7" fill="#8a93b5"/>' +
+        '<circle cx="38" cy="38" r="4.5" fill="#8a93b5"/><circle cx="62" cy="38" r="4.5" fill="#8a93b5"/><circle cx="62" cy="62" r="4.5" fill="#8a93b5"/><circle cx="38" cy="62" r="4.5" fill="#8a93b5"/>' + STAR + '</svg>';
+    }
+    if (kind === 'glass') {
+      return '<svg viewBox="0 0 100 80"><path d="M8 70 L20 10 L90 10 L92 70Z" fill="#bfe6fa" stroke="#8a93b5" stroke-width="5" stroke-linejoin="round"/>' +
+        '<path d="M30 62 L42 18 M46 62 L58 18" stroke="#fff" stroke-width="6" opacity=".75" stroke-linecap="round"/>' + STAR + '</svg>';
+    }
+    if (kind === 'spray') {
+      return '<svg viewBox="0 0 60 100"><rect x="22" y="2" width="16" height="10" rx="3" fill="#23305a"/><rect x="18" y="10" width="24" height="16" rx="4" fill="#8a93b5"/>' +
+        '<rect x="8" y="24" width="44" height="72" rx="10" style="fill:var(--car,#ff7a6b)" stroke="rgba(35,48,90,.4)" stroke-width="3"/>' +
+        '<rect x="8" y="48" width="44" height="22" fill="#fff" opacity=".85"/><circle cx="30" cy="59" r="7" style="fill:var(--car,#ff7a6b)"/>' +
+        '<path d="M14 34 L14 90" stroke="#fff" stroke-width="4" opacity=".4" stroke-linecap="round"/></svg>';
+    }
+    // nozzle
+    return '<svg viewBox="0 0 100 100"><path d="M44 24 L10 58" stroke="#8a93b5" stroke-width="9" stroke-linecap="round"/><circle cx="10" cy="58" r="5" fill="#c9d3ee"/>' +
+      '<rect x="40" y="12" width="46" height="20" rx="8" fill="#8a93b5" stroke="#23305a" stroke-width="3"/>' +
+      '<rect x="52" y="22" width="26" height="60" rx="10" fill="#2b3350" stroke="#1b1b25" stroke-width="3"/>' +
+      '<path d="M54 62 Q42 70 54 78" fill="none" stroke="#8a93b5" stroke-width="4" stroke-linecap="round"/>' +
+      '<rect x="78" y="18" width="10" height="10" rx="3" fill="#1b1b25"/></svg>';
+  }
+
+  function setTool(t, cx, cy, w, h) {
+    t.x = cx; t.y = cy;
+    if (w) { t.w = w; t.h = h; }
+    t.el.style.width = t.w + 'px'; t.el.style.height = t.h + 'px';
+    t.el.style.left = (cx - t.w / 2) + 'px'; t.el.style.top = (cy - t.h / 2) + 'px';
+  }
+
+  function makeTool(kind, pop) {
+    var el = document.createElement('div');
+    el.className = 'tool';
+    el.innerHTML = toolMarkup(kind);
+    var t = { kind: kind, el: el, loc: 'home', drag: null, x: 0, y: 0, w: 60, h: 60 };
+    stage.appendChild(el);
+    tools[kind] = t;
+    var home = L.homes[kind], sz = L.sz[kind];
+    if (home) setTool(t, home.x, home.y, sz.w, sz.h);
+    bindTool(t);
+    if (pop) {
+      el.animate([{ transform: 'scale(.2)', opacity: 0 }, { transform: 'scale(1.12)', opacity: 1, offset: 0.7 }, { transform: 'scale(1)', opacity: 1 }], { duration: 380, easing: 'ease-out' });
+    }
+    if (kind === 'nozzle') { noz.tool = t; }
+    return t;
+  }
+
+  function goHome(t) {
+    t.loc = 'home';
+    t.el.classList.add('anim');
+    t.el.style.zIndex = 2;
+    var h = L.homes[t.kind], s = L.sz[t.kind];
+    setTool(t, h.x, h.y, s.w, s.h);
+  }
+
+  function nearest(list, x, y, posFn) {
+    var best = null, bd = Infinity;
+    list.forEach(function (o) {
+      var p = posFn(o), d = (p.x - x) * (p.x - x) + (p.y - y) * (p.y - y);
+      if (d < bd) { bd = d; best = o; }
+    });
+    return best;
+  }
+
+  function flyTo(t, px, size) {
+    t.loc = 'gone';
+    t.el.classList.add('anim');
+    var h = size * (t.h / t.w);
+    setTool(t, px.x, px.y, size, h);
+    setTimeout(function () { if (t.el.parentNode) t.el.parentNode.removeChild(t.el); }, 320);
+  }
+
+  // 道具を離した/タップしたときの処理。成功したら true
+  function dropTool(t, x, y, tap) {
+    if (!car || switching) return false;
+    if (!tap && !inTop(x, y)) return false;
+    var list, o;
+    if (t.kind === 'tire') {
+      list = car.wheels.filter(function (w) { return w.st === 'off'; });
+      if (!list.length) return false;
+      o = tap ? list[0] : nearest(list, x, y, wheelPx);
+      flyTo(t, wheelPx(o), 72 * L.s);
+      installTire(car, o);
+      makeTool('tire', true);
+      return true;
+    }
+    if (t.kind === 'glass') {
+      list = car.wins.filter(function (w) { return w.st === 'empty'; });
+      if (!list.length) return false;
+      o = tap ? list[0] : nearest(list, x, y, winPx);
+      flyTo(t, winPx(o), 76 * L.s);
+      installGlass(car, o);
+      makeTool('glass', true);
+      return true;
+    }
+    if (t.kind === 'spray') {
+      list = car.doors.filter(function (d) { return d.rem > 0; });
+      if (!list.length) return false;
+      o = tap ? list[0] : nearest(list, x, y, doorPx);
+      sprayStep(car, o);
+      return false;   // スプレー缶は元の場所へ戻る
+    }
+    return false;
+  }
+
+  function bindTool(t) {
+    var el = t.el;
+    el.addEventListener('pointerdown', function (e) {
+      if (t.loc !== 'home' || t.drag) return;
+      if (t.kind === 'nozzle' && noz.mode !== 'rest') return;
+      e.preventDefault();
+      try { el.setPointerCapture(e.pointerId); } catch (x) {}
+      t.drag = { id: e.pointerId, dx: e.clientX - t.x, dy: e.clientY - t.y, sx: e.clientX, sy: e.clientY, moved: false, t0: performance.now() };
+      t.loc = 'drag';
+      el.classList.remove('anim');
+      el.style.zIndex = 10;
+      if (t.kind === 'nozzle') { noz.mode = 'drag'; noz.tw = null; startLoop(); }
+      snd(function () { A.tone && A.tone(660, 0.07, 0.12, 1); });
+    });
+    el.addEventListener('pointermove', function (e) {
+      var d = t.drag;
+      if (!d || d.id !== e.pointerId) return;
+      if (Math.abs(e.clientX - d.sx) + Math.abs(e.clientY - d.sy) > 10) d.moved = true;
+      setTool(t, e.clientX - d.dx, e.clientY - d.dy);
+      if (t.kind === 'nozzle') { noz.x = t.x; noz.y = t.y; }
+    });
+    function end(e) {
+      var d = t.drag;
+      if (!d || d.id !== e.pointerId) return;
+      t.drag = null;
+      try { el.releasePointerCapture(e.pointerId); } catch (x) {}
+      var up = e.type === 'pointerup';
+      var tap = up && !d.moved && (performance.now() - d.t0) < 500;
+      if (t.kind === 'nozzle') { nozzleRelease(tap); return; }
+      var handled = up && dropTool(t, e.clientX, e.clientY, tap);
+      if (!handled) {
+        goHome(t);
+        if (tap) el.animate([{ transform: 'rotate(0deg)' }, { transform: 'rotate(-8deg)' }, { transform: 'rotate(8deg)' }, { transform: 'rotate(0deg)' }], { duration: 260 });
+      }
+    }
+    el.addEventListener('pointerup', end);
+    el.addEventListener('pointercancel', end);
+  }
+
+  // ---- 給油ノズル(ホースつき) ----
+  function setNozEl() { if (noz.tool) setTool(noz.tool, noz.x, noz.y); }
+  function drawHose() {
+    var a = { x: noz.x - noz.w / 2 + ATT[0] * noz.w, y: noz.y - noz.h / 2 + ATT[1] * noz.h };
+    var p = L.hole;
+    var dist = Math.hypot(a.x - p.x, a.y - p.y);
+    var cx = (a.x + p.x) / 2, cy = (a.y + p.y) / 2 + Math.min(120, dist * 0.45 + 24);
+    hosePath.setAttribute('d', 'M' + p.x + ' ' + p.y + ' Q' + cx + ' ' + cy + ' ' + a.x + ' ' + a.y);
+  }
+  function tween(tx, ty, dur, done) {
+    noz.tw = { fx: noz.x, fy: noz.y, tx: tx, ty: ty, t0: performance.now(), dur: dur, done: done };
+    startLoop();
+  }
+  function easeOutBack(u) { var c1 = 1.4, c3 = c1 + 1; return 1 + c3 * Math.pow(u - 1, 3) + c1 * Math.pow(u - 1, 2); }
+  function nozReturn() {
+    noz.mode = 'return';
+    var h = L.homes.nozzle;
+    tween(h.x, h.y, 320, function () {
+      noz.mode = 'rest';
+      var t = noz.tool; if (t) { t.loc = 'home'; t.el.style.zIndex = 2; }
+      noz.x = h.x; noz.y = h.y; setNozEl(); drawHose();
+    });
+  }
+  function nozzleRelease(tap) {
+    if (tap && car && !switching && car.fuel.st !== 'done') {
+      var p = portPx();
+      var tx = p.x - (TIP[0] - 0.5) * noz.w, ty = p.y - (TIP[1] - 0.5) * noz.h;
+      noz.mode = 'go'; noz.holdT = 0;
+      tween(tx, ty, 420, function () { noz.mode = 'hold'; });
+    } else {
+      nozReturn();
+    }
+    startLoop();
+  }
+  function startLoop() { if (!noz.raf) { noz.last = 0; noz.raf = requestAnimationFrame(loop); } }
+  function loop(ts) {
+    noz.raf = 0;
+    var dt = noz.last ? Math.min(60, ts - noz.last) : 16;
+    noz.last = ts;
+    if (noz.tw) {
+      var w = noz.tw, u = Math.min(1, (performance.now() - w.t0) / w.dur), e = easeOutBack(u);
+      noz.x = w.fx + (w.tx - w.fx) * e; noz.y = w.fy + (w.ty - w.fy) * e;
+      setNozEl();
+      if (u >= 1) { noz.tw = null; if (w.done) w.done(); }
+    }
+    if (noz.mode === 'drag' || noz.mode === 'hold') updateFuel(dt);
+    if (noz.mode === 'hold') {
+      noz.holdT += dt;
+      if (noz.holdT > 3800) nozReturn();
+    }
+    drawHose();
+    if (noz.mode !== 'rest') { if (!noz.raf) noz.raf = requestAnimationFrame(loop); }
+    else noz.last = 0;
+  }
+
+  // ================= レイアウト =================
+  function layout() {
+    var T = pTop.getBoundingClientRect(), B = pBot.getBoundingClientRect();
+    L.T = T; L.B = B;
+    carLayer.style.left = T.left + 'px'; carLayer.style.top = T.top + 'px';
+    carLayer.style.width = T.width + 'px'; carLayer.style.height = T.height + 'px';
+    var padTop = 40, pad = 8;
+    var aw = T.width - pad * 2, ah = T.height - padTop - pad;
+    L.s = Math.max(0.1, Math.min(aw / VBW, ah / VBH));
+    var w = VBW * L.s, h = VBH * L.s;
+    L.ox = T.left + (T.width - w) / 2;
+    L.oy = T.top + padTop + (ah - h) / 2;
+    cars.forEach(function (c) {
+      c.svg.style.left = (L.ox - T.left) + 'px'; c.svg.style.top = (L.oy - T.top) + 'px';
+      c.svg.style.width = w + 'px'; c.svg.style.height = h + 'px';
+    });
+
+    var cw = B.width / 2, ch = B.height / 2, u = Math.min(cw, ch), ins = 6;
+    var pos = { glass: [B.left, B.top], tire: [B.left, B.top + ch], nozzle: [B.left + cw, B.top], spray: [B.left + cw, B.top + ch] };
+    Object.keys(pos).forEach(function (k) {
+      var el = cellEls[k];
+      el.style.left = (pos[k][0] + ins) + 'px'; el.style.top = (pos[k][1] + ins) + 'px';
+      el.style.width = (cw - ins * 2) + 'px'; el.style.height = (ch - ins * 2) + 'px';
+      L.homes[k] = { x: pos[k][0] + cw / 2, y: pos[k][1] + ch / 2 };
+    });
+    var ps = u / 200;
+    var ax = pos.nozzle[0] + (cw - 200 * ps) / 2, ay = pos.nozzle[1] + (ch - 200 * ps) / 2;
+    pump.style.left = ax + 'px'; pump.style.top = ay + 'px';
+    pump.style.width = pump.style.height = (200 * ps) + 'px';
+    L.hole = { x: ax + 165 * ps, y: ay + 58 * ps };
+    L.homes.nozzle = { x: ax + 112 * ps, y: ay + 95 * ps };
+    L.sz = {
+      tire: { w: u * 0.66, h: u * 0.66 },
+      glass: { w: u * 0.74, h: u * 0.74 * 0.8 },
+      spray: { w: u * 0.34, h: u * 0.34 * 1.667 },
+      nozzle: { w: 80 * ps, h: 80 * ps }
+    };
+    noz.w = L.sz.nozzle.w; noz.h = L.sz.nozzle.h;
+    Object.keys(tools).forEach(function (k) {
+      var t = tools[k];
+      if (t.loc === 'home') {
+        t.el.classList.remove('anim');
+        setTool(t, L.homes[k].x, L.homes[k].y, L.sz[k].w, L.sz[k].h);
+      } else {
+        t.w = L.sz[k].w; t.h = L.sz[k].h;
+      }
+    });
+    if (noz.mode === 'rest') { noz.x = L.homes.nozzle.x; noz.y = L.homes.nozzle.y; }
+    drawHose();
+  }
+
+  stage.addEventListener('pointerdown', function (e) {
+    if (e.target === stage || e.target === pTop || e.target === pBot) {
+      snd(function () { A.tone && A.tone(440 + Math.random() * 300, 0.06, 0.08, 1); });
+    }
+  });
+
+  window.addEventListener('resize', layout);
+  window.addEventListener('orientationchange', function () { setTimeout(layout, 100); });
+  layout();
+  car = makeCar();
+  stage.style.setProperty('--car', car.color);
+  ['glass', 'tire', 'nozzle', 'spray'].forEach(function (k) { makeTool(k, false); });
+  layout();
+})();
+</script>
+</body>
+</html>
