@@ -1,0 +1,498 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,user-scalable=no">
+<title>しょうぼうしゃ</title>
+<meta name="game-title" content="しょうぼうしゃ">
+<meta name="game-icon" content="🚒">
+<meta name="game-color" content="#ff7a6b">
+<meta name="game-order" content="120">
+<script src="../../shared/common.js"></script>
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #bfe6fa; touch-action: none;
+    -webkit-user-select: none; user-select: none; -webkit-tap-highlight-color: transparent;
+    font-family: -apple-system, "Hiragino Sans", sans-serif; color: #23305a; }
+  #stage { position: fixed; inset: 0; overflow: hidden; }
+  .pane { position: absolute; box-sizing: border-box; }
+  #pTop { background: linear-gradient(#a9dcf6 0%, #dff3fc 68%, #9aa2b6 68%, #868fa6 100%); }
+  #pBot { background: #b8becd;
+    background-image: radial-gradient(rgba(35,48,90,.08) 2px, transparent 2px); background-size: 26px 26px; }
+  @media (orientation: portrait) {
+    #pTop { left: 0; top: 0; width: 100%; height: 50%; }
+    #pBot { left: 0; top: 50%; width: 100%; height: 50%; border-top: 6px solid rgba(35,48,90,.18); }
+  }
+  @media (orientation: landscape) {
+    #pTop { left: 50%; top: 0; width: 50%; height: 100%; }
+    #pBot { left: 0; top: 0; width: 50%; height: 100%; border-right: 6px solid rgba(35,48,90,.18); }
+  }
+  .layer { position: absolute; z-index: 1; overflow: hidden; pointer-events: none; }
+  .grp { position: absolute; left: 0; top: 0; width: 100%; height: 100%; }
+  .bsvg, .scene, .nozzle { position: absolute; overflow: visible; }
+  #fx { position: absolute; left: 0; top: 0; width: 100%; height: 100%; z-index: 6; pointer-events: none; }
+  .flick { animation: flick .42s ease-in-out infinite alternate; }
+  @keyframes flick { from { transform: scale(1, .92); } to { transform: scale(1.07, 1.1); } }
+  .smk { fill: #59627f; opacity: 0; transform-box: fill-box; transform-origin: center; animation: smoke 2s linear infinite; }
+  .smk:nth-child(2) { animation-delay: .7s; }
+  .smk:nth-child(3) { animation-delay: 1.3s; }
+  @keyframes smoke { 0% { transform: translate(0,0) scale(.5); opacity: .55; } 100% { transform: translate(6px,-34px) scale(1.8); opacity: 0; } }
+  .beacon { animation: blink .6s steps(2) infinite; }
+  @keyframes blink { 50% { opacity: .35; } }
+
+  #panel { position: fixed; inset: 0; z-index: 1000; background: rgba(35,48,90,.55);
+    display: flex; align-items: center; justify-content: center; touch-action: none; }
+  #panel[hidden] { display: none; }
+  #panel .card { background: #fff; border-radius: 22px; padding: 22px 22px 18px; width: min(86vw, 380px);
+    box-shadow: 0 10px 30px rgba(0,0,0,.3); text-align: center; }
+  #panel .ttl { font-size: 18px; font-weight: 700; }
+  #panel .sub { font-size: 14px; margin: 6px 0 14px; opacity: .75; }
+  #panel .row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  #panel .num { border: 3px solid #c9d3ee; background: #f4f7ff; border-radius: 16px; padding: 10px 0 8px;
+    font-size: 26px; font-weight: 700; color: #23305a; cursor: pointer; font-family: inherit; }
+  #panel .num small { display: block; font-size: 14px; font-weight: 400; margin-top: 2px; }
+  #panel .num.on { border-color: #ff7a6b; background: #ffeceb; }
+  #panel .close { margin-top: 16px; border: 0; background: #8e7cff; color: #fff; font-size: 16px; font-weight: 700;
+    border-radius: 14px; padding: 12px 34px; cursor: pointer; font-family: inherit; }
+</style>
+</head>
+<body>
+<div id="stage">
+  <div class="pane" id="pTop"></div>
+  <div class="pane" id="pBot"></div>
+  <div class="layer" id="topLayer"></div>
+  <div class="layer" id="botLayer"></div>
+  <canvas id="fx"></canvas>
+</div>
+
+<div id="panel" hidden>
+  <div class="card">
+    <div class="ttl">ほごしゃせってい</div>
+    <div class="sub">ビルのかず</div>
+    <div class="row" id="numRow"></div>
+    <button class="close" id="closeBtn">とじる</button>
+  </div>
+</div>
+
+<script>
+(function () {
+  var A = window.Asobo || {};
+  function snd(f) { try { f(); } catch (e) {} }
+  var NS = 'http://www.w3.org/2000/svg';
+
+  var COLORS = ['#6c7bff', '#4ccb8a', '#ff7a6b', '#ffc83d', '#b08cff', '#5ec8e8'];
+  var BW = 140, BH = 230;                 // ビルのSVG座標
+  var WCOLS = [41, 99], WROWS = [65, 115, 165];   // 窓の中心(横2×縦3)
+  var SW = 400, SH = 260;                 // 消防車シーンのSVG座標
+  var NOZ = [342, 166];                   // ノズルのつけ根(シーン座標)
+  var NOZ_LEN = 46;
+  var MAX_B = 3;
+
+  var stage = document.getElementById('stage');
+  var pTop = document.getElementById('pTop');
+  var pBot = document.getElementById('pBot');
+  var topLayer = document.getElementById('topLayer');
+  var botLayer = document.getElementById('botLayer');
+  var cv = document.getElementById('fx');
+  var ctx = cv.getContext('2d');
+  var mqPortrait = window.matchMedia('(orientation: portrait)');
+
+  var L = { T: null, B: null, sB: 1, S2: 1, N: { x: 0, y: 0 }, dpr: 1 };
+  var nB = loadN();
+  var groups = [];
+  var cur = null;
+  var switching = false;
+  var pendingRebuild = false;
+  var botGroup, sceneEl, nozEl;
+  var nozAngle = -80;
+  var press = { on: false, id: null, x: 0, y: 0 };
+  var parts = [];
+  var raf = 0, last = 0, dashOff = 0, hissT = 0;
+
+  function loadN() {
+    try { var v = parseInt(localStorage.getItem('shobo.buildings'), 10); if (v >= 1 && v <= MAX_B) return v; } catch (e) {}
+    return 2;
+  }
+  function saveN() { try { localStorage.setItem('shobo.buildings', String(nB)); } catch (e) {} }
+  function wait(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+  function rnd(a, b) { return a + Math.random() * (b - a); }
+  function shuffle(a) { for (var i = a.length - 1; i > 0; i--) { var j = (Math.random() * (i + 1)) | 0; var t = a[i]; a[i] = a[j]; a[j] = t; } return a; }
+
+  // ================= ビル =================
+  function deco(k) {
+    if (k === 0) return '<rect x="88" y="6" width="30" height="16" rx="5" fill="#8a93b5" stroke="#23305a" stroke-width="3"/><path d="M94 22 V28 M112 22 V28" stroke="#23305a" stroke-width="3"/>';
+    if (k === 1) return '<path d="M70 22 V2 M60 10 H80" stroke="#23305a" stroke-width="3" stroke-linecap="round"/><circle cx="70" cy="2" r="3" fill="#ff7a6b"/>';
+    return '<rect x="40" y="4" width="60" height="16" rx="4" fill="#fff" stroke="#23305a" stroke-width="3"/><circle cx="56" cy="12" r="3.5" fill="#ff7a6b"/><circle cx="70" cy="12" r="3.5" fill="#ffc83d"/><circle cx="84" cy="12" r="3.5" fill="#4ccb8a"/>';
+  }
+  var FLAME = '<path d="M0 0 C-22 0 -24 -16 -14 -28 C-12 -22 -8 -22 -8 -30 C-8 -40 -2 -44 2 -52 C6 -38 22 -30 20 -12 C20 -4 14 0 0 0Z" fill="#ff7a3d"/>' +
+    '<path d="M0 0 C-12 0 -13 -8 -7 -16 C-4 -12 0 -16 2 -24 C6 -14 13 -12 11 -5 C10 -1 6 0 0 0Z" fill="#ffc83d"/>';
+
+  function bldMarkup(color, dk, burning) {
+    var s = '<rect x="10" y="30" width="120" height="190" rx="4" fill="' + color + '" stroke="rgba(35,48,90,.35)" stroke-width="4"/>' +
+      '<rect x="4" y="22" width="132" height="14" rx="4" fill="' + color + '" stroke="rgba(35,48,90,.35)" stroke-width="4"/>' +
+      '<rect x="4" y="22" width="132" height="14" rx="4" fill="rgba(35,48,90,.22)"/>' + deco(dk);
+    var w, x, y;
+    for (w = 0; w < 6; w++) {
+      x = WCOLS[w % 2] - 15; y = WROWS[w >> 1] - 19;
+      s += '<rect class="win win' + w + '" x="' + x + '" y="' + y + '" width="30" height="38" rx="3" fill="' + (burning[w] ? '#5a2a2a' : '#bfe6fa') + '" stroke="rgba(35,48,90,.5)" stroke-width="3"/>' +
+        '<path d="M' + (x + 15) + ' ' + y + ' V' + (y + 38) + ' M' + x + ' ' + (y + 19) + ' H' + (x + 30) + '" stroke="rgba(35,48,90,.4)" stroke-width="2"/>';
+    }
+    s += '<rect x="56" y="186" width="28" height="34" rx="4" fill="rgba(35,48,90,.45)"/>';
+    for (w = 0; w < 6; w++) {
+      if (!burning[w]) continue;
+      s += '<g class="fire fire' + w + '" transform="translate(' + WCOLS[w % 2] + ',' + (WROWS[w >> 1] + 19) + ')">' +
+        '<rect class="glow" x="-15" y="-38" width="30" height="38" rx="3" fill="#ff7a3d" opacity=".65"/>' +
+        '<g class="smoke"><circle class="smk" cx="-4" cy="-50" r="7"/><circle class="smk" cx="6" cy="-50" r="6"/><circle class="smk" cx="0" cy="-54" r="8"/></g>' +
+        '<g class="fscale"><g class="flick">' + FLAME + '</g></g></g>';
+    }
+    return s;
+  }
+
+  function makeGroup() {
+    var g = { el: document.createElement('div'), blds: [], fires: [] };
+    g.el.className = 'grp';
+    topLayer.appendChild(g.el);
+    var lastColors = [];
+    for (var k = 0; k < nB; k++) {
+      var color;
+      do { color = COLORS[(Math.random() * COLORS.length) | 0]; } while (lastColors.indexOf(color) >= 0 && lastColors.length < COLORS.length);
+      lastColors.push(color);
+      var n = 2 + ((Math.random() * 3) | 0);              // 1棟あたり2〜4か所
+      var ids = shuffle([0, 1, 2, 3, 4, 5]).slice(0, n);
+      var burning = [false, false, false, false, false, false];
+      ids.forEach(function (i) { burning[i] = true; });
+      var svg = document.createElementNS(NS, 'svg');
+      svg.setAttribute('class', 'bsvg');
+      svg.setAttribute('viewBox', '0 0 ' + BW + ' ' + BH);
+      svg.innerHTML = bldMarkup(color, (Math.random() * 3) | 0, burning);
+      g.el.appendChild(svg);
+      var b = { svg: svg, ox: 0, oy: 0 };
+      g.blds.push(b);
+      ids.forEach(function (i) {
+        g.fires.push({ b: b, w: i, p: 0, out: false,
+          root: svg.querySelector('.fire' + i), scale: svg.querySelector('.fire' + i + ' .fscale'),
+          glow: svg.querySelector('.fire' + i + ' .glow'), win: svg.querySelector('.win' + i) });
+      });
+    }
+    groups.push(g);
+    return g;
+  }
+
+  // ================= 消防車シーン =================
+  function sceneMarkup() {
+    return '<ellipse cx="120" cy="244" rx="120" ry="8" fill="rgba(35,48,90,.2)"/><ellipse cx="300" cy="250" rx="40" ry="6" fill="rgba(35,48,90,.2)"/>' +
+      // 車体
+      '<rect x="14" y="130" width="214" height="86" rx="10" fill="#e8483b" stroke="#a82e24" stroke-width="3"/>' +
+      '<path d="M150 130 V92 Q150 84 160 84 H196 Q210 84 216 100 L226 130Z" fill="#e8483b" stroke="#a82e24" stroke-width="3" stroke-linejoin="round"/>' +
+      '<path d="M160 94 H194 Q203 94 207 104 L211 126 H160Z" fill="#bfe6fa" stroke="#a82e24" stroke-width="3" stroke-linejoin="round"/>' +
+      '<rect x="14" y="168" width="214" height="10" fill="#fff" opacity=".85"/>' +
+      '<rect x="26" y="112" width="118" height="10" rx="3" fill="#c9d3ee" stroke="#8a93b5" stroke-width="3"/>' +
+      '<path d="M44 112V122M64 112V122M84 112V122M104 112V122M124 112V122" stroke="#8a93b5" stroke-width="3"/>' +
+      '<rect x="40" y="122" width="8" height="8" fill="#8a93b5"/><rect x="120" y="122" width="8" height="8" fill="#8a93b5"/>' +
+      '<ellipse class="beacon" cx="182" cy="82" rx="10" ry="6" fill="#ffc83d" stroke="#c98f00" stroke-width="2.5"/>' +
+      '<circle cx="38" cy="150" r="18" fill="#8a93b5" stroke="#4a5372" stroke-width="3"/><circle cx="38" cy="150" r="9" fill="#c9d3ee"/>' +
+      '<rect x="216" y="200" width="14" height="12" rx="3" fill="#8a93b5"/>' +
+      '<circle cx="64" cy="216" r="22" fill="#23305a"/><circle cx="64" cy="216" r="11" fill="#c9d3ee"/>' +
+      '<circle cx="186" cy="216" r="22" fill="#23305a"/><circle cx="186" cy="216" r="11" fill="#c9d3ee"/>' +
+      // ホース
+      '<path d="M226 190 C250 256 340 258 ' + NOZ[0] + ' ' + (NOZ[1] + 6) + '" fill="none" stroke="#1b1b25" stroke-width="7" stroke-linecap="round"/>' +
+      // 消防士
+      '<rect x="282" y="240" width="16" height="10" rx="3" fill="#23305a"/><rect x="304" y="240" width="16" height="10" rx="3" fill="#23305a"/>' +
+      '<rect x="284" y="212" width="12" height="30" fill="#3b4670"/><rect x="306" y="212" width="12" height="30" fill="#3b4670"/>' +
+      '<rect x="276" y="156" width="52" height="62" rx="12" fill="#ffc83d" stroke="#c98f00" stroke-width="3"/>' +
+      '<rect x="276" y="192" width="52" height="8" fill="#fff" opacity=".85"/>' +
+      '<path d="M322 172 L' + NOZ[0] + ' ' + NOZ[1] + '" stroke="#ffc83d" stroke-width="12" stroke-linecap="round"/>' +
+      '<path d="M312 186 L' + (NOZ[0] - 2) + ' ' + (NOZ[1] + 8) + '" stroke="#e8b02f" stroke-width="11" stroke-linecap="round"/>' +
+      '<circle cx="302" cy="138" r="17" fill="#ffd9b0" stroke="#c9a37a" stroke-width="2"/>' +
+      '<circle cx="296" cy="140" r="2.5" fill="#23305a"/><circle cx="309" cy="140" r="2.5" fill="#23305a"/>' +
+      '<path d="M296 148 Q302 154 309 148" stroke="#23305a" stroke-width="2.5" fill="none" stroke-linecap="round"/>' +
+      '<path d="M283 136 Q283 112 302 112 Q321 112 321 136Z" fill="#e8483b" stroke="#a82e24" stroke-width="3"/>' +
+      '<rect x="278" y="134" width="48" height="7" rx="3" fill="#a82e24"/><circle cx="302" cy="123" r="4.5" fill="#ffc83d"/>';
+  }
+
+  function buildBottom() {
+    botGroup = document.createElement('div');
+    botGroup.className = 'grp';
+    botLayer.appendChild(botGroup);
+    sceneEl = document.createElementNS(NS, 'svg');
+    sceneEl.setAttribute('class', 'scene');
+    sceneEl.setAttribute('viewBox', '0 0 ' + SW + ' ' + SH);
+    sceneEl.innerHTML = sceneMarkup();
+    botGroup.appendChild(sceneEl);
+    nozEl = document.createElementNS(NS, 'svg');
+    nozEl.setAttribute('class', 'nozzle');
+    nozEl.setAttribute('viewBox', '0 0 60 24');
+    nozEl.innerHTML = '<rect x="0" y="6" width="36" height="12" rx="5" fill="#e8a83d" stroke="#8a5b00" stroke-width="2.5"/>' +
+      '<rect x="8" y="6" width="6" height="12" fill="#8a5b00" opacity=".5"/>' +
+      '<rect x="34" y="3" width="16" height="18" rx="3" fill="#8a93b5" stroke="#4a5372" stroke-width="2.5"/>' +
+      '<circle cx="4" cy="12" r="4" fill="#1b1b25"/>';
+    botGroup.appendChild(nozEl);
+  }
+
+  // ================= レイアウト =================
+  function idleAngle() { return mqPortrait.matches ? -80 : -20; }
+
+  function layout() {
+    var T = pTop.getBoundingClientRect(), B = pBot.getBoundingClientRect();
+    L.T = T; L.B = B;
+    [[topLayer, T], [botLayer, B]].forEach(function (p) {
+      p[0].style.left = p[1].left + 'px'; p[0].style.top = p[1].top + 'px';
+      p[0].style.width = p[1].width + 'px'; p[0].style.height = p[1].height + 'px';
+    });
+    // ビル
+    var n = nB, padX = 10, topPad = 40;
+    var cellW = (T.width - padX * 2) / n;
+    var groundY = T.height * 0.9;
+    L.sB = Math.max(0.1, Math.min(cellW * 0.94 / BW, (groundY - topPad) / BH));
+    groups.forEach(function (g) {
+      var cnt = g.blds.length;
+      var cw = (T.width - padX * 2) / cnt;
+      g.blds.forEach(function (b, i) {
+        var w = BW * L.sB, h = BH * L.sB;
+        var left = padX + cw * (i + 0.5) - w / 2, top = groundY - h;
+        b.svg.style.left = left + 'px'; b.svg.style.top = top + 'px';
+        b.svg.style.width = w + 'px'; b.svg.style.height = h + 'px';
+        b.ox = T.left + left; b.oy = T.top + top;
+      });
+    });
+    // 消防車
+    var pad = 8;
+    L.S2 = Math.max(0.1, Math.min((B.width - pad * 2) / SW, (B.height - pad * 2) / SH));
+    var sw = SW * L.S2, sh = SH * L.S2;
+    var sl = (B.width - sw) / 2, st = (B.height - sh) / 2;
+    sceneEl.style.left = sl + 'px'; sceneEl.style.top = st + 'px';
+    sceneEl.style.width = sw + 'px'; sceneEl.style.height = sh + 'px';
+    L.N = { x: B.left + sl + NOZ[0] * L.S2, y: B.top + st + NOZ[1] * L.S2 };
+    nozEl.style.width = 60 * L.S2 + 'px'; nozEl.style.height = 24 * L.S2 + 'px';
+    nozEl.style.left = (sl + (NOZ[0] - 4) * L.S2) + 'px';
+    nozEl.style.top = (st + (NOZ[1] - 12) * L.S2) + 'px';
+    nozEl.style.transformOrigin = (4 * L.S2) + 'px ' + (12 * L.S2) + 'px';
+    if (!press.on) nozAngle = idleAngle();
+    nozEl.style.transform = 'rotate(' + nozAngle + 'deg)';
+    // キャンバス
+    L.dpr = Math.min(2, window.devicePixelRatio || 1);
+    cv.width = Math.round(window.innerWidth * L.dpr); cv.height = Math.round(window.innerHeight * L.dpr);
+    ctx.setTransform(L.dpr, 0, 0, L.dpr, 0, 0);
+  }
+
+  function fireCenter(f) {
+    return { x: f.b.ox + WCOLS[f.w % 2] * L.sB, y: f.b.oy + (WROWS[f.w >> 1] - 6) * L.sB };
+  }
+
+  // ================= 放水 =================
+  function inT(x, y) { var T = L.T; return x >= T.left && x <= T.right && y >= T.top && y <= T.bottom; }
+  function aim() {
+    nozAngle = Math.atan2(press.y - L.N.y, press.x - L.N.x) * 180 / Math.PI;
+    nozEl.style.transform = 'rotate(' + nozAngle + 'deg)';
+  }
+  function tipPx() {
+    var a = nozAngle * Math.PI / 180;
+    return { x: L.N.x + Math.cos(a) * NOZ_LEN * L.S2, y: L.N.y + Math.sin(a) * NOZ_LEN * L.S2 };
+  }
+
+  stage.addEventListener('pointerdown', function (e) {
+    if (press.on || switching) return;
+    if (!inT(e.clientX, e.clientY)) {
+      snd(function () { A.tone && A.tone(440 + Math.random() * 300, 0.06, 0.08, 1); });
+      return;
+    }
+    press.on = true; press.id = e.pointerId; press.x = e.clientX; press.y = e.clientY;
+    try { stage.setPointerCapture(e.pointerId); } catch (x) {}
+    aim();
+    hissT = 0;
+    snd(function () { A.tone && A.tone(300, 0.1, 0.1, 1.4); });
+    startFrame();
+  });
+  stage.addEventListener('pointermove', function (e) {
+    if (!press.on || e.pointerId !== press.id) return;
+    press.x = e.clientX; press.y = e.clientY;
+    aim();
+  });
+  function endPress(e) {
+    if (press.on && e.pointerId === press.id) press.on = false;
+  }
+  stage.addEventListener('pointerup', endPress);
+  stage.addEventListener('pointercancel', endPress);
+
+  function startFrame() { if (!raf) { last = 0; raf = requestAnimationFrame(frame); } }
+
+  function frame(ts) {
+    raf = 0;
+    var dt = last ? Math.min(50, ts - last) : 16;
+    last = ts;
+    var active = press.on && !switching;
+    var tip = tipPx(), i;
+    if (active) {
+      var dist = Math.hypot(press.x - tip.x, press.y - tip.y);
+      for (i = 0; i < 4; i++) {
+        parts.push({ k: 0, age: 0, life: rnd(320, 450), sx: tip.x, sy: tip.y,
+          tx: press.x + rnd(-8, 8), ty: press.y + rnd(-8, 8), arc: dist * 0.1 + 8, j: rnd(-7, 7), r: rnd(4, 8) });
+      }
+      for (i = 0; i < 2; i++) {
+        parts.push({ k: 1, age: 0, life: rnd(260, 420), x: press.x, y: press.y,
+          vx: rnd(-90, 90), vy: rnd(-170, -40), r: rnd(2.5, 5) });
+      }
+      hissT += dt;
+      if (hissT > 130) { hissT = 0; snd(function () { A.noise && A.noise(); }); }
+      damage(dt);
+    }
+    // 更新
+    for (i = parts.length - 1; i >= 0; i--) {
+      var p = parts[i];
+      p.age += dt;
+      if (p.age >= p.life) { parts.splice(i, 1); continue; }
+      if (p.k === 1) { p.vy += 520 * dt / 1000; p.x += p.vx * dt / 1000; p.y += p.vy * dt / 1000; }
+      if (p.k === 2) { p.y -= 40 * dt / 1000; p.x += p.vx * dt / 1000; }
+    }
+    // 描画
+    ctx.clearRect(0, 0, window.innerWidth, window.innerHeight);
+    if (active) {
+      var dist2 = Math.hypot(press.x - tip.x, press.y - tip.y);
+      var arc = dist2 * 0.1 + 8;
+      dashOff += dt * 0.28;
+      ctx.save();
+      ctx.beginPath();
+      ctx.moveTo(tip.x, tip.y);
+      ctx.quadraticCurveTo((tip.x + press.x) / 2, (tip.y + press.y) / 2 - arc * 2, press.x, press.y);
+      ctx.strokeStyle = 'rgba(150,205,255,.5)';
+      ctx.lineWidth = Math.max(4, 7 * L.S2);
+      ctx.lineCap = 'round';
+      ctx.setLineDash([16, 12]);
+      ctx.lineDashOffset = -dashOff;
+      ctx.stroke();
+      ctx.restore();
+    }
+    parts.forEach(function (p) {
+      var u = p.age / p.life, x, y;
+      if (p.k === 0) {
+        x = p.sx + (p.tx - p.sx) * u + p.j * u;
+        y = p.sy + (p.ty - p.sy) * u - p.arc * Math.sin(Math.PI * u);
+        ctx.fillStyle = 'rgba(120,190,255,' + (0.9 - u * 0.4) + ')';
+        ctx.beginPath(); ctx.arc(x, y, p.r * (1 + u * 0.3), 0, 6.283); ctx.fill();
+      } else if (p.k === 1) {
+        ctx.fillStyle = 'rgba(200,230,255,' + (1 - u) + ')';
+        ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, 6.283); ctx.fill();
+      } else {
+        ctx.fillStyle = 'rgba(255,255,255,' + (0.7 * (1 - u)) + ')';
+        ctx.beginPath(); ctx.arc(p.x, p.y, p.r * (1 + u * 1.6), 0, 6.283); ctx.fill();
+      }
+    });
+    if (press.on || parts.length) raf = requestAnimationFrame(frame);
+    else { last = 0; ctx.clearRect(0, 0, window.innerWidth, window.innerHeight); }
+  }
+
+  function steam(x, y, n) {
+    for (var i = 0; i < n; i++) parts.push({ k: 2, age: 0, life: rnd(500, 800), x: x + rnd(-14, 14), y: y + rnd(-10, 10), vx: rnd(-14, 14), r: rnd(8, 15) });
+  }
+
+  function damage(dt) {
+    if (!cur) return;
+    var thr = 24 * L.sB + 10;
+    cur.fires.forEach(function (f) {
+      if (f.out) return;
+      var c = fireCenter(f);
+      if (Math.hypot(press.x - c.x, press.y - c.y) < thr) {
+        f.p = Math.min(1, f.p + dt / 2000);       // 2秒あてると消える
+        f.scale.style.transform = 'scale(' + (1 - 0.85 * f.p) + ')';
+        f.glow.setAttribute('opacity', (0.65 * (1 - f.p)).toFixed(2));
+        if (Math.random() < 0.25) steam(c.x, c.y, 1);
+        if (f.p >= 1) extinguish(f);
+      }
+    });
+  }
+
+  function extinguish(f) {
+    f.out = true;
+    var c = fireCenter(f);
+    steam(c.x, c.y, 8);
+    f.win.setAttribute('fill', '#bfe6fa');
+    var a = f.root.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 250, fill: 'forwards' });
+    a.onfinish = function () { if (f.root.parentNode) f.root.parentNode.removeChild(f.root); };
+    snd(function () { A.tone && A.tone(880, 0.12, 0.2, 1); setTimeout(function () { A.tone && A.tone(1175, 0.16, 0.2, 1); }, 110); });
+    if (cur.fires.every(function (x) { return x.out; })) allOut();
+  }
+
+  // ================= 次の現場へ =================
+  function sparkleAt(x, y) {
+    for (var i = 0; i < 10; i++) {
+      var d = document.createElement('div');
+      d.style.cssText = 'position:absolute;z-index:8;pointer-events:none;border-radius:50%;width:10px;height:10px;left:' + (x - 5) + 'px;top:' + (y - 5) + 'px;background:' + (i % 2 ? '#ffc83d' : '#fff');
+      stage.appendChild(d);
+      var ang = i / 10 * Math.PI * 2, r = 40 + Math.random() * 40;
+      var an = d.animate([{ transform: 'translate(0,0) scale(1)', opacity: 1 }, { transform: 'translate(' + Math.cos(ang) * r + 'px,' + Math.sin(ang) * r + 'px) scale(.2)', opacity: 0 }], { duration: 650, easing: 'ease-out' });
+      an.onfinish = (function (d) { return function () { d.remove(); }; })(d);
+    }
+  }
+  function siren(times) {
+    var f = [740, 988], i;
+    for (i = 0; i < times; i++) {
+      (function (i) { setTimeout(function () { snd(function () { A.tone && A.tone(f[i % 2], 0.26, 0.14, 1); }); }, i * 280); })(i);
+    }
+  }
+
+  async function allOut() {
+    switching = true;
+    press.on = false;
+    var T = L.T;
+    sparkleAt(T.left + T.width / 2, T.top + T.height * 0.5);
+    [523, 659, 784, 1047].forEach(function (f, i) { setTimeout(function () { snd(function () { A.tone && A.tone(f, 0.18, 0.22, 1); }); }, i * 110); });
+    await wait(900);
+    var W = Math.max(window.innerWidth, 600);
+    siren(8);
+    botGroup.animate([{ transform: 'translateX(0px)' }, { transform: 'translateX(' + W + 'px)' }], { duration: 900, easing: 'ease-in', fill: 'forwards' });
+    await wait(850);
+    var old = cur;
+    cur = makeGroup();
+    layout();
+    old.el.animate([{ transform: 'translateX(0px)' }, { transform: 'translateX(' + (-W) + 'px)' }], { duration: 600, easing: 'ease-in', fill: 'forwards' });
+    cur.el.animate([{ transform: 'translateX(' + W + 'px)' }, { transform: 'translateX(0px)' }], { duration: 700, delay: 200, easing: 'ease-out', fill: 'backwards' });
+    await wait(900);
+    if (old.el.parentNode) old.el.parentNode.removeChild(old.el);
+    groups.splice(groups.indexOf(old), 1);
+    botGroup.getAnimations().forEach(function (a) { a.cancel(); });
+    botGroup.animate([{ transform: 'translateX(' + (-W) + 'px)' }, { transform: 'translateX(0px)' }], { duration: 950, easing: 'ease-out' });
+    await wait(1000);
+    switching = false;
+    if (pendingRebuild) { pendingRebuild = false; rebuild(); }
+  }
+
+  function rebuild() {
+    groups.forEach(function (g) { if (g.el.parentNode) g.el.parentNode.removeChild(g.el); });
+    groups = [];
+    cur = makeGroup();
+    layout();
+  }
+
+  // ================= 保護者メニュー =================
+  var panel = document.getElementById('panel');
+  var numRow = document.getElementById('numRow');
+  function renderNums() {
+    numRow.innerHTML = '';
+    for (var n = 1; n <= MAX_B; n++) {
+      (function (n) {
+        var b = document.createElement('button');
+        b.className = 'num' + (n === nB ? ' on' : '');
+        var t = '';
+        for (var k = 0; k < n; k++) t += '🏢';
+        b.innerHTML = n + '<small>' + t + '</small>';
+        b.addEventListener('click', function () {
+          if (n === nB) return;
+          nB = n; saveN(); renderNums();
+          if (switching) pendingRebuild = true; else rebuild();
+        });
+        numRow.appendChild(b);
+      })(n);
+    }
+  }
+  function openPanel() { renderNums(); panel.hidden = false; }
+  document.getElementById('closeBtn').addEventListener('click', function () { panel.hidden = true; });
+  if (A.cornerButton) A.cornerButton({ corner: 'left', icon: '⚙️', label: '設定（長押し）', onHold: openPanel });
+
+  window.addEventListener('resize', function () { layout(); });
+  window.addEventListener('orientationchange', function () { setTimeout(layout, 100); });
+  buildBottom();
+  cur = makeGroup();
+  layout();
+})();
+</script>
+</body>
+</html>
