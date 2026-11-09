@@ -37,6 +37,19 @@
   .smk:nth-child(3) { animation-delay: 1.3s; }
   @keyframes smoke { 0% { transform: translate(0,0) scale(.5); opacity: .55; } 100% { transform: translate(6px,-34px) scale(1.8); opacity: 0; } }
   .beacon { animation: blink .6s steps(2) infinite; }
+  #ladder { position: absolute; left: 0; top: 0; width: 100%; height: 100%; z-index: 4; pointer-events: none; overflow: visible; }
+  .ctl { position: absolute; border: 0; padding: 0; border-radius: 50%; pointer-events: auto; touch-action: none; cursor: pointer;
+    display: flex; align-items: center; justify-content: center; transition: transform .08s, box-shadow .08s;
+    box-shadow: 0 6px 0 rgba(35,48,90,.35), 0 8px 12px rgba(35,48,90,.25); }
+  .ctl.down { transform: translateY(4px); box-shadow: 0 2px 0 rgba(35,48,90,.35); }
+  .ctl svg { width: 62%; height: 62%; pointer-events: none; }
+  .ctl.hint { animation: ctlpulse .7s ease-in-out infinite alternate; }
+  @keyframes ctlpulse { from { filter: brightness(1); } to { filter: brightness(1.2) drop-shadow(0 0 8px #ffc83d); } }
+  .armL { transform-origin: -8px 4px; animation: wave .5s ease-in-out infinite alternate; }
+  .armR { transform-origin: 8px 4px; animation: wave .5s ease-in-out .25s infinite alternate-reverse; }
+  @keyframes wave { from { transform: rotate(-14deg); } to { transform: rotate(14deg); } }
+  .rider { position: absolute; z-index: 5; pointer-events: none; }
+  .rider svg { width: 100%; height: 100%; display: block; overflow: visible; }
   @keyframes blink { 50% { opacity: .35; } }
 
   #panel { position: fixed; inset: 0; z-index: 1000; background: rgba(35,48,90,.55);
@@ -61,6 +74,7 @@
   <div class="pane" id="pBot"></div>
   <div class="layer" id="topLayer"></div>
   <div class="layer" id="botLayer"></div>
+  <svg id="ladder"></svg>
   <canvas id="fx"></canvas>
 </div>
 
@@ -86,23 +100,29 @@
   var NOZ = [342, 166];                   // ノズルのつけ根(シーン座標)
   var NOZ_LEN = 46;
   var MAX_B = 3;
+  var LH = 120, LTW = 336, LT_PIVOT = [150, 48];   // はしご車(SVG座標)
 
   var stage = document.getElementById('stage');
   var pTop = document.getElementById('pTop');
   var pBot = document.getElementById('pBot');
   var topLayer = document.getElementById('topLayer');
   var botLayer = document.getElementById('botLayer');
+  var ladderSvg = document.getElementById('ladder');
   var cv = document.getElementById('fx');
   var ctx = cv.getContext('2d');
   var mqPortrait = window.matchMedia('(orientation: portrait)');
 
-  var L = { T: null, B: null, sB: 1, S2: 1, N: { x: 0, y: 0 }, dpr: 1 };
+  var L = { T: null, B: null, sB: 1, S2: 1, N: { x: 0, y: 0 }, dpr: 1, pivot: { x: 0, y: 0 }, Lmin: 60, Lmax: 300 };
   var nB = loadN();
   var groups = [];
   var cur = null;
   var switching = false;
   var pendingRebuild = false;
-  var botGroup, sceneEl, nozEl;
+  var botGroup, sceneEl, nozEl, ladTruckEl;
+  var ctl = {};
+  var phase = 'fire';          // fire(消火) → rescue(救助) → leave(次の現場へ)
+  var lad = { phi: 0, len: 0, held: { ccw: false, cw: false, ret: false, ext: false }, sndT: 0 };
+  var riders = [];
   var nozAngle = -80;
   var press = { on: false, id: null, x: 0, y: 0 };
   var parts = [];
@@ -202,11 +222,11 @@
       '<rect x="276" y="192" width="52" height="8" fill="#fff" opacity=".85"/>' +
       '<path d="M322 172 L' + NOZ[0] + ' ' + NOZ[1] + '" stroke="#ffc83d" stroke-width="12" stroke-linecap="round"/>' +
       '<path d="M312 186 L' + (NOZ[0] - 2) + ' ' + (NOZ[1] + 8) + '" stroke="#e8b02f" stroke-width="11" stroke-linecap="round"/>' +
-      '<circle cx="302" cy="138" r="17" fill="#ffd9b0" stroke="#c9a37a" stroke-width="2"/>' +
-      '<circle cx="296" cy="140" r="2.5" fill="#23305a"/><circle cx="309" cy="140" r="2.5" fill="#23305a"/>' +
-      '<path d="M296 148 Q302 154 309 148" stroke="#23305a" stroke-width="2.5" fill="none" stroke-linecap="round"/>' +
-      '<path d="M283 136 Q283 112 302 112 Q321 112 321 136Z" fill="#e8483b" stroke="#a82e24" stroke-width="3"/>' +
-      '<rect x="278" y="134" width="48" height="7" rx="3" fill="#a82e24"/><circle cx="302" cy="123" r="4.5" fill="#ffc83d"/>';
+      '<circle cx="302" cy="146" r="17" fill="#ffd9b0" stroke="#c9a37a" stroke-width="2"/>' +
+      '<circle cx="296" cy="147" r="2.5" fill="#23305a"/><circle cx="309" cy="147" r="2.5" fill="#23305a"/>' +
+      '<path d="M296 154 Q302 160 309 154" stroke="#23305a" stroke-width="2.5" fill="none" stroke-linecap="round"/>' +
+      '<path d="M283 128 Q283 103 302 103 Q321 103 321 128Z" fill="#e8483b" stroke="#a82e24" stroke-width="3"/>' +
+      '<rect x="278" y="126" width="48" height="7" rx="3" fill="#a82e24"/><circle cx="302" cy="114" r="4.5" fill="#ffc83d"/>';
   }
 
   function buildBottom() {
@@ -226,6 +246,48 @@
       '<rect x="34" y="3" width="16" height="18" rx="3" fill="#8a93b5" stroke="#4a5372" stroke-width="2.5"/>' +
       '<circle cx="4" cy="12" r="4" fill="#1b1b25"/>';
     botGroup.appendChild(nozEl);
+    ladTruckEl = document.createElementNS(NS, 'svg');
+    ladTruckEl.setAttribute('class', 'scene');
+    ladTruckEl.setAttribute('viewBox', '0 0 ' + LTW + ' ' + LH);
+    ladTruckEl.innerHTML = ladderTruckMarkup();
+    botGroup.insertBefore(ladTruckEl, nozEl);
+    var ICON_ROT = '<svg viewBox="0 0 48 48"><path d="M32 12 A14 14 0 1 0 38 26" fill="none" stroke="#fff" stroke-width="5" stroke-linecap="round"/><path d="M27 5 L34 13 L25 17" fill="none" stroke="#fff" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+    var ICON_ROT_R = '<svg viewBox="0 0 48 48"><g transform="translate(48,0) scale(-1,1)"><path d="M32 12 A14 14 0 1 0 38 26" fill="none" stroke="#fff" stroke-width="5" stroke-linecap="round"/><path d="M27 5 L34 13 L25 17" fill="none" stroke="#fff" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/></g></svg>';
+    var ICON_EXT = '<svg viewBox="0 0 48 48"><path d="M12 22 L24 10 L36 22 M12 38 L24 26 L36 38" fill="none" stroke="#fff" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+    var ICON_RET = '<svg viewBox="0 0 48 48"><path d="M12 10 L24 22 L36 10 M12 26 L24 38 L36 26" fill="none" stroke="#fff" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+    [['ccw', '#6c7bff', ICON_ROT], ['cw', '#6c7bff', ICON_ROT_R], ['ret', '#ff9f43', ICON_RET], ['ext', '#ff9f43', ICON_EXT]].forEach(function (d) {
+      var b = document.createElement('button');
+      b.className = 'ctl';
+      b.style.background = d[1];
+      b.setAttribute('aria-label', d[0]);
+      b.innerHTML = d[2];
+      botGroup.appendChild(b);
+      ctl[d[0]] = b;
+      b.addEventListener('pointerdown', function (e) {
+        e.preventDefault();
+        try { b.setPointerCapture(e.pointerId); } catch (x) {}
+        lad.held[d[0]] = true;
+        b.classList.add('down');
+        startFrame();
+      });
+      var up = function () { lad.held[d[0]] = false; b.classList.remove('down'); };
+      b.addEventListener('pointerup', up);
+      b.addEventListener('pointercancel', up);
+    });
+  }
+
+  function ladderTruckMarkup() {
+    return '<ellipse cx="170" cy="117" rx="160" ry="4" fill="rgba(35,48,90,.2)"/>' +
+      '<rect x="20" y="60" width="290" height="40" rx="8" fill="#f0603a" stroke="#a83a1c" stroke-width="3"/>' +
+      '<path d="M250 60 V38 Q250 32 258 32 H288 Q300 32 305 46 L316 60Z" fill="#f0603a" stroke="#a83a1c" stroke-width="3" stroke-linejoin="round"/>' +
+      '<path d="M258 41 H287 Q294 41 297 49 L300 58 H258Z" fill="#bfe6fa" stroke="#a83a1c" stroke-width="2.5" stroke-linejoin="round"/>' +
+      '<rect x="20" y="78" width="290" height="8" fill="#fff" opacity=".85"/>' +
+      '<rect x="112" y="52" width="76" height="10" rx="3" fill="#8a93b5" stroke="#4a5372" stroke-width="3"/>' +
+      '<circle cx="150" cy="48" r="9" fill="#c9d3ee" stroke="#4a5372" stroke-width="3"/>' +
+      '<ellipse class="beacon" cx="272" cy="28" rx="9" ry="5" fill="#ffc83d" stroke="#c98f00" stroke-width="2.5"/>' +
+      '<circle cx="62" cy="100" r="17" fill="#23305a"/><circle cx="62" cy="100" r="8" fill="#c9d3ee"/>' +
+      '<circle cx="110" cy="100" r="17" fill="#23305a"/><circle cx="110" cy="100" r="8" fill="#c9d3ee"/>' +
+      '<circle cx="270" cy="100" r="17" fill="#23305a"/><circle cx="270" cy="100" r="8" fill="#c9d3ee"/>';
   }
 
   // ================= レイアウト =================
@@ -256,11 +318,24 @@
     });
     // 消防車
     var pad = 8;
-    L.S2 = Math.max(0.1, Math.min((B.width - pad * 2) / SW, (B.height - pad * 2) / SH));
+    var ctrlH = Math.max(46, Math.min(70, B.height * 0.14));
+    L.S2 = Math.max(0.1, Math.min((B.width - pad * 2) / SW, (B.height - pad * 2 - ctrlH - 6) / (SH + LH + 6)));
     var sw = SW * L.S2, sh = SH * L.S2;
-    var sl = (B.width - sw) / 2, st = (B.height - sh) / 2;
+    var sl = (B.width - sw) / 2;
+    var st = (B.height - ctrlH - 6 - (SH + LH + 6) * L.S2) / 2;
     sceneEl.style.left = sl + 'px'; sceneEl.style.top = st + 'px';
     sceneEl.style.width = sw + 'px'; sceneEl.style.height = sh + 'px';
+    var lw = LTW * L.S2, ll = (B.width - lw) / 2, lt = st + (SH + 6) * L.S2;
+    ladTruckEl.style.left = ll + 'px'; ladTruckEl.style.top = lt + 'px';
+    ladTruckEl.style.width = lw + 'px'; ladTruckEl.style.height = (LH * L.S2) + 'px';
+    L.pivot = { x: B.left + ll + LT_PIVOT[0] * L.S2, y: B.top + lt + LT_PIVOT[1] * L.S2 };
+    var totalW = Math.min(B.width - 16, ctrlH * 6), step = (totalW - ctrlH) / 3, left0 = (B.width - totalW) / 2;
+    ['ccw', 'cw', 'ret', 'ext'].forEach(function (k, i) {
+      var b = ctl[k];
+      b.style.width = b.style.height = ctrlH + 'px';
+      b.style.left = (left0 + step * i) + 'px';
+      b.style.top = (B.height - ctrlH - 8) + 'px';
+    });
     L.N = { x: B.left + sl + NOZ[0] * L.S2, y: B.top + st + NOZ[1] * L.S2 };
     nozEl.style.width = 60 * L.S2 + 'px'; nozEl.style.height = 24 * L.S2 + 'px';
     nozEl.style.left = (sl + (NOZ[0] - 4) * L.S2) + 'px';
@@ -268,10 +343,153 @@
     nozEl.style.transformOrigin = (4 * L.S2) + 'px ' + (12 * L.S2) + 'px';
     if (!press.on) nozAngle = idleAngle();
     nozEl.style.transform = 'rotate(' + nozAngle + 'deg)';
+    // はしごの長さの範囲(いちばん遠い窓まで届く)
+    var far = 0;
+    if (cur) cur.blds.forEach(function (b) {
+      for (var w = 0; w < 6; w++) {
+        var wx = b.ox + WCOLS[w % 2] * L.sB, wy = b.oy + WROWS[w >> 1] * L.sB;
+        far = Math.max(far, Math.hypot(wx - L.pivot.x, wy - L.pivot.y));
+      }
+    });
+    L.Lmin = 60 * L.S2;
+    L.Lmax = Math.max(L.Lmin + 80, far + 12 * L.S2);
+    if (!lad.len) lad.len = L.Lmin;
+    lad.len = Math.max(L.Lmin, Math.min(L.Lmax, lad.len));
+    drawLadder();
     // キャンバス
     L.dpr = Math.min(2, window.devicePixelRatio || 1);
     cv.width = Math.round(window.innerWidth * L.dpr); cv.height = Math.round(window.innerHeight * L.dpr);
     ctx.setTransform(L.dpr, 0, 0, L.dpr, 0, 0);
+  }
+
+  function ladderDir() {
+    var r = lad.phi * Math.PI / 180;
+    return mqPortrait.matches ? { x: Math.sin(r), y: -Math.cos(r) } : { x: Math.cos(r), y: Math.sin(r) };
+  }
+  function drawLadder() {
+    if (!L.pivot) return;
+    var d = ladderDir(), deg = Math.atan2(d.y, d.x) * 180 / Math.PI, Lc = lad.len, w2 = 7 * L.S2 + 2;
+    var s = '<g transform="translate(' + L.pivot.x + ',' + L.pivot.y + ') rotate(' + deg + ')">';
+    var i, x;
+    for (i = 0; i < 3; i++) {
+      var x0 = Lc * i / 3, x1 = Lc * (i + 1) / 3, hw = w2 * (1 - 0.13 * i), stp = 14 * L.S2 + 4;
+      s += '<path d="M' + x0 + ' ' + (-hw) + ' H' + x1 + ' M' + x0 + ' ' + hw + ' H' + x1 + '" stroke="#6b7390" stroke-width="4" stroke-linecap="round" fill="none"/>';
+      for (x = x0 + stp / 2; x < x1; x += stp) s += '<path d="M' + x + ' ' + (-hw) + ' V' + hw + '" stroke="#9aa3c0" stroke-width="3"/>';
+      s += '<path d="M' + x1 + ' ' + (-hw) + ' V' + hw + '" stroke="#4a5372" stroke-width="4"/>';
+    }
+    var bw = 16 * L.S2 + 8;
+    s += '<rect x="' + (Lc - 2) + '" y="' + (-w2 - 6) + '" width="' + bw + '" height="' + (2 * w2 + 12) + '" rx="4" fill="#ffc83d" stroke="#c98f00" stroke-width="3"/>';
+    s += '</g>';
+    ladderSvg.innerHTML = s;
+  }
+  function ladderTip() {
+    var d = ladderDir(), off = lad.len + (16 * L.S2 + 8) / 2 - 2;
+    return { x: L.pivot.x + d.x * off, y: L.pivot.y + d.y * off };
+  }
+  function personPx(p) {
+    return { x: p.b.ox + WCOLS[p.w % 2] * L.sB, y: p.b.oy + WROWS[p.w >> 1] * L.sB };
+  }
+
+  // ---- 要救助者 ----
+  var SHIRTS = ['#6c7bff', '#4ccb8a', '#ff7a6b', '#b08cff', '#5ec8e8'];
+  var HAIRS = ['#5a3a22', '#23305a', '#b5651d', '#2b2b2b'];
+  function personInner(c) {
+    return '<path d="M-9 18 V6 Q-9 -2 0 -2 Q9 -2 9 6 V18Z" fill="' + c.shirt + '"/>' +
+      '<g class="armL"><path d="M-8 4 L-15 -9" stroke="' + c.shirt + '" stroke-width="4" stroke-linecap="round"/><circle cx="-15" cy="-10" r="2.8" fill="#ffd9b0"/></g>' +
+      '<g class="armR"><path d="M8 4 L15 -9" stroke="' + c.shirt + '" stroke-width="4" stroke-linecap="round"/><circle cx="15" cy="-10" r="2.8" fill="#ffd9b0"/></g>' +
+      '<circle cx="0" cy="-9" r="6.5" fill="#ffd9b0"/>' +
+      '<path d="M-6.8 -10 Q0 -19 6.8 -10 Q0 -14 -6.8 -10Z" fill="' + c.hair + '"/>' +
+      '<circle cx="-2.4" cy="-8.5" r="1" fill="#23305a"/><circle cx="2.4" cy="-8.5" r="1" fill="#23305a"/>' +
+      '<path d="M-2.4 -5.5 Q0 -3.5 2.4 -5.5" stroke="#23305a" stroke-width="1" fill="none"/>';
+  }
+
+  function startRescue() {
+    phase = 'rescue';
+    var fires = shuffle(cur.fires.slice());
+    var n = Math.min(fires.length, 2 + ((Math.random() * 3) | 0));     // 数人(2〜4人)
+    cur.people = [];
+    for (var i = 0; i < n; i++) {
+      var f = fires[i];
+      var c = { shirt: SHIRTS[(Math.random() * SHIRTS.length) | 0], hair: HAIRS[(Math.random() * HAIRS.length) | 0] };
+      var g = document.createElementNS(NS, 'g');
+      g.setAttribute('transform', 'translate(' + WCOLS[f.w % 2] + ',' + WROWS[f.w >> 1] + ')');
+      g.innerHTML = '<rect x="-14" y="-18" width="28" height="36" rx="2" fill="#3a4468"/>' + personInner(c) +
+        '<circle cx="12" cy="-20" r="6" fill="#ff7a6b" stroke="#fff" stroke-width="1.5"/><path d="M12 -23.5 V-19.5" stroke="#fff" stroke-width="2" stroke-linecap="round"/><circle cx="12" cy="-16.8" r="1.1" fill="#fff"/>';
+      f.b.svg.appendChild(g);
+      f.win.setAttribute('fill', '#3a4468');
+      cur.people.push({ b: f.b, w: f.w, g: g, c: c, f: f, state: 'wait', hold: 0 });
+    }
+    snd(function () { A.tone && A.tone(900, 0.1, 0.15, 1.3); setTimeout(function () { A.tone && A.tone(1100, 0.12, 0.15, 1.3); }, 140); });
+    Object.keys(ctl).forEach(function (k) { ctl[k].classList.add('hint'); });
+    startFrame();
+  }
+
+  function checkBoard(dt) {
+    if (!cur || !cur.people) return;
+    var tip = ladderTip(), thr = 22 * L.sB + 14;
+    cur.people.forEach(function (p) {
+      if (p.state !== 'wait') return;
+      var c = personPx(p);
+      if (Math.hypot(tip.x - c.x, tip.y - c.y) < thr) {
+        p.hold += dt;
+        if (p.hold >= 300) board(p);
+      } else {
+        p.hold = Math.max(0, p.hold - dt);
+      }
+    });
+  }
+
+  function board(p) {
+    p.state = 'riding';
+    var a = p.g.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 200, fill: 'forwards' });
+    a.onfinish = function () { if (p.g.parentNode) p.g.parentNode.removeChild(p.g); };
+    p.f.win.setAttribute('fill', '#bfe6fa');
+    var el = document.createElement('div');
+    el.className = 'rider';
+    var w = 34 * L.sB, h = 42 * L.sB;
+    el.style.width = w + 'px'; el.style.height = h + 'px';
+    el.innerHTML = '<svg viewBox="-17 -22 34 42">' + personInner(p.c) + '</svg>';
+    stage.appendChild(el);
+    riders.push({ p: p, el: el, t: 0, dur: 1200, w: w, h: h });
+    snd(function () { A.tone && A.tone(660, 0.1, 0.2, 1.4); });
+  }
+
+  function updateRiders(dt) {
+    for (var i = riders.length - 1; i >= 0; i--) {
+      var r = riders[i];
+      r.t += dt;
+      var u = 1 - Math.min(1, r.t / r.dur), d = ladderDir();
+      var off = (lad.len + 4) * u;
+      var x = L.pivot.x + d.x * off, y = L.pivot.y + d.y * off;
+      r.el.style.left = (x - r.w / 2) + 'px'; r.el.style.top = (y - r.h / 2) + 'px';
+      if (r.t >= r.dur) {
+        r.el.remove();
+        riders.splice(i, 1);
+        r.p.state = 'done';
+        sparkleAt(L.pivot.x, L.pivot.y);
+        snd(function () { A.tone && A.tone(784, 0.12, 0.2, 1); setTimeout(function () { A.tone && A.tone(1047, 0.18, 0.2, 1); }, 120); });
+        if (cur.people.every(function (q) { return q.state === 'done'; })) finishRescue();
+      }
+    }
+  }
+
+  function finishRescue() {
+    phase = 'leave';
+    Object.keys(ctl).forEach(function (k) { ctl[k].classList.remove('hint'); });
+    allOut();
+  }
+
+  function retractLadder() {
+    return new Promise(function (resolve) {
+      var from = { len: lad.len, phi: lad.phi }, t0 = performance.now();
+      (function step(now) {
+        var u = Math.min(1, (now - t0) / 500);
+        lad.len = from.len + (L.Lmin - from.len) * u;
+        lad.phi = from.phi * (1 - u);
+        drawLadder();
+        if (u < 1) requestAnimationFrame(step); else resolve();
+      })(t0);
+    });
   }
 
   function fireCenter(f) {
@@ -290,8 +508,9 @@
   }
 
   stage.addEventListener('pointerdown', function (e) {
+    if (e.target.closest && e.target.closest('.ctl')) return;
     if (press.on || switching) return;
-    if (!inT(e.clientX, e.clientY)) {
+    if (phase !== 'fire' || !inT(e.clientX, e.clientY)) {
       snd(function () { A.tone && A.tone(440 + Math.random() * 300, 0.06, 0.08, 1); });
       return;
     }
@@ -335,6 +554,20 @@
       if (hissT > 130) { hissT = 0; snd(function () { A.noise && A.noise(); }); }
       damage(dt);
     }
+    // はしご
+    var hd = lad.held, anyHeld = hd.ccw || hd.cw || hd.ret || hd.ext;
+    if (!switching && anyHeld) {
+      var rate = (L.Lmax - L.Lmin) * 0.5 * dt / 1000;
+      if (hd.ext) lad.len = Math.min(L.Lmax, lad.len + rate);
+      if (hd.ret) lad.len = Math.max(L.Lmin, lad.len - rate);
+      if (hd.ccw) lad.phi = Math.max(-80, lad.phi - 50 * dt / 1000);
+      if (hd.cw) lad.phi = Math.min(80, lad.phi + 50 * dt / 1000);
+      drawLadder();
+      lad.sndT += dt;
+      if (lad.sndT > 160) { lad.sndT = 0; var ff = 110 + (lad.len - L.Lmin) / (L.Lmax - L.Lmin) * 90; snd(function () { A.tone && A.tone(ff, 0.12, 0.07, 1.1); }); }
+    }
+    if (phase === 'rescue' && !switching) checkBoard(dt);
+    updateRiders(dt);
     // 更新
     for (i = parts.length - 1; i >= 0; i--) {
       var p = parts[i];
@@ -376,7 +609,7 @@
         ctx.beginPath(); ctx.arc(p.x, p.y, p.r * (1 + u * 1.6), 0, 6.283); ctx.fill();
       }
     });
-    if (press.on || parts.length) raf = requestAnimationFrame(frame);
+    if (press.on || parts.length || anyHeld || riders.length || phase === 'rescue') raf = requestAnimationFrame(frame);
     else { last = 0; ctx.clearRect(0, 0, window.innerWidth, window.innerHeight); }
   }
 
@@ -408,7 +641,7 @@
     var a = f.root.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 250, fill: 'forwards' });
     a.onfinish = function () { if (f.root.parentNode) f.root.parentNode.removeChild(f.root); };
     snd(function () { A.tone && A.tone(880, 0.12, 0.2, 1); setTimeout(function () { A.tone && A.tone(1175, 0.16, 0.2, 1); }, 110); });
-    if (cur.fires.every(function (x) { return x.out; })) allOut();
+    if (cur.fires.every(function (x) { return x.out; })) startRescue();
   }
 
   // ================= 次の現場へ =================
@@ -432,10 +665,13 @@
   async function allOut() {
     switching = true;
     press.on = false;
+    Object.keys(lad.held).forEach(function (k) { lad.held[k] = false; });
     var T = L.T;
     sparkleAt(T.left + T.width / 2, T.top + T.height * 0.5);
     [523, 659, 784, 1047].forEach(function (f, i) { setTimeout(function () { snd(function () { A.tone && A.tone(f, 0.18, 0.22, 1); }); }, i * 110); });
-    await wait(900);
+    await wait(700);
+    await retractLadder();
+    ladderSvg.style.visibility = 'hidden';
     var W = Math.max(window.innerWidth, 600);
     siren(8);
     botGroup.animate([{ transform: 'translateX(0px)' }, { transform: 'translateX(' + W + 'px)' }], { duration: 900, easing: 'ease-in', fill: 'forwards' });
@@ -451,11 +687,19 @@
     botGroup.getAnimations().forEach(function (a) { a.cancel(); });
     botGroup.animate([{ transform: 'translateX(' + (-W) + 'px)' }, { transform: 'translateX(0px)' }], { duration: 950, easing: 'ease-out' });
     await wait(1000);
+    lad.len = L.Lmin; lad.phi = 0; drawLadder();
+    ladderSvg.style.visibility = 'visible';
+    phase = 'fire';
     switching = false;
     if (pendingRebuild) { pendingRebuild = false; rebuild(); }
   }
 
   function rebuild() {
+    riders.forEach(function (r) { r.el.remove(); });
+    riders = [];
+    phase = 'fire';
+    Object.keys(ctl).forEach(function (k) { ctl[k].classList.remove('hint'); });
+    lad.len = 0; lad.phi = 0;
     groups.forEach(function (g) { if (g.el.parentNode) g.el.parentNode.removeChild(g.el); });
     groups = [];
     cur = makeGroup();
